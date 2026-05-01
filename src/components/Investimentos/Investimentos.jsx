@@ -44,13 +44,13 @@ export default function Investimentos() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-5">
         <StatCard label="Patrimônio Total" value={fmt(patrimônioTotal)} sub="Reserva + investimentos" color="var(--purple)" dot="var(--purple)" />
         <StatCard label="Carteira Investida" value={fmt(totalInv)} sub="Excluindo reserva" color="var(--blue)" dot="var(--blue)" />
         <StatCard label="Reserva de Emergência" value={fmt(inv.reserva.atual)} sub={`${reservaPct}% da meta atingida`} color={reservaColor} dot={reservaColor} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Reserva Card */}
         <Card>
           <CardTitle right={

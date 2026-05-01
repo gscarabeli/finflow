@@ -1,38 +1,29 @@
 export const MOCK_DATA = {
   eu: {
-    nome: 'Lucas',
+    nome: 'Gustavo',
     contas: [
-      { id: 'c1', nome: 'Nubank', tipo: 'Cartão de Crédito', saldo: -1240.50 },
-      { id: 'c2', nome: 'Inter Corrente', tipo: 'Conta Corrente', saldo: 3820.00 },
-      { id: 'c3', nome: 'C6 Poupança', tipo: 'Poupança', saldo: 1500.00 },
+      { id: 'c1', nome: 'Santander', tipo: 'Cartão de Crédito', saldo: 0.00 },
+      { id: 'c2', nome: 'Picpay', tipo: 'Conta Corrente', saldo: 0.00 },
+      { id: 'c3', nome: 'C6 Bank', tipo: 'Conta Corrente', saldo: 0.00 },
+      { id: 'c4', nome: 'Rico', tipo: 'Poupança', saldo: 0.00 },
+      { id: 'c5', nome: 'Alelo', tipo: 'Vale Refeição (VR)', saldo: 0.01 },
     ],
     investimentos: {
-      reserva: { atual: 12000, meta: 30000 },
-      previdencia: 8500,
-      acoes: 4200,
-      fundos: 6800,
-      cdi: 9300,
+      reserva: { atual: 0, meta: 30000 },
+      previdencia: 0,
+      acoes: 0,
+      fundos: 0,
+      cdi: 0,
     },
     transacoes: [
-      { id: 't1', desc: 'Salário', valor: 6500, tipo: 'entrada', cat: 'Salário', data: '2024-12-01' },
-      { id: 't2', desc: 'Aluguel', valor: 1800, tipo: 'saida', cat: 'Moradia', data: '2024-12-02' },
-      { id: 't3', desc: 'Supermercado Pão de Açúcar', valor: 387.40, tipo: 'saida', cat: 'Alimentação', data: '2024-12-04' },
-      { id: 't4', desc: 'Uber', valor: 42.90, tipo: 'saida', cat: 'Transporte', data: '2024-12-05' },
-      { id: 't5', desc: 'Freelance Design', valor: 1200, tipo: 'entrada', cat: 'Freelance', data: '2024-12-06' },
-      { id: 't6', desc: 'iFood', valor: 89.70, tipo: 'saida', cat: 'Alimentação', data: '2024-12-07' },
-      { id: 't7', desc: 'Academia SmartFit', valor: 99.90, tipo: 'saida', cat: 'Saúde', data: '2024-12-08' },
-      { id: 't8', desc: 'Netflix + Spotify', valor: 62.00, tipo: 'saida', cat: 'Lazer', data: '2024-12-09' },
-      { id: 't9', desc: 'Combustível', valor: 210.00, tipo: 'saida', cat: 'Transporte', data: '2024-12-10' },
-      { id: 't10', desc: 'Farmácia', valor: 54.30, tipo: 'saida', cat: 'Saúde', data: '2024-12-11' },
-      { id: 't11', desc: 'Restaurante', valor: 120.00, tipo: 'saida', cat: 'Alimentação', data: '2024-12-12' },
-      { id: 't12', desc: 'Conta de Luz', valor: 185.00, tipo: 'saida', cat: 'Moradia', data: '2024-12-13' },
+      // { id: 't1', desc: 'Salário', valor: 6500, tipo: 'entrada', cat: 'Salário', data: '2024-12-01' },
     ],
   },
   ela: {
-    nome: 'Ana',
+    nome: 'Larissa',
     contas: [
-      { id: 'c4', nome: 'Nubank Corrente', tipo: 'Conta Corrente', saldo: 2150.00 },
-      { id: 'c5', nome: 'Bradesco CC', tipo: 'Cartão de Crédito', saldo: -890.00 },
+      { id: 'c4', nome: 'Picpay', tipo: 'Conta Corrente + Cartão de Crédito', saldo: 0.00 },
+      { id: 'c5', nome: 'Santander', tipo: 'Cartão de Crédito', saldo: 0.00 }
     ],
     investimentos: {
       reserva: { atual: 7500, meta: 20000 },

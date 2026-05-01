@@ -16,7 +16,7 @@ function MessageBubble({ msg }) {
   const isUser = msg.role === 'user'
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed`}
+      <div className={`max-w-[90%] sm:max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed`}
         style={isUser
           ? { background: 'var(--blue)', color: '#fff', borderRadius: '16px 16px 2px 16px' }
           : { background: 'var(--bg3)', color: 'var(--text)', borderRadius: '16px 16px 16px 2px', border: '1px solid var(--border)' }
@@ -153,9 +153,9 @@ Instruções:
         <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Seu conselheiro financeiro pessoal com IA</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Chat (left, wider) */}
-        <div className="col-span-2 flex flex-col gap-4">
+        <div className="lg:col-span-2 flex flex-col gap-4">
           {/* API Key section */}
           <div className="rounded-2xl border p-4" style={{ background: keySaved && apiKey ? 'var(--green-bg)' : 'var(--amber-bg)', borderColor: keySaved && apiKey ? 'var(--green)' : 'var(--amber)' }}>
             <div className="flex items-center gap-2 mb-2.5">
@@ -197,7 +197,7 @@ Instruções:
               </button>
             }>Chat com Conselheiro</CardTitle>
 
-            <div className="flex flex-col gap-3 overflow-y-auto mb-4" style={{ maxHeight: 380, scrollbarWidth: 'thin' }}>
+            <div className="flex flex-col gap-3 overflow-y-auto mb-4" style={{ maxHeight: 'min(380px, 60vh)', scrollbarWidth: 'thin' }}>
               {messages.map((m, i) => <MessageBubble key={i} msg={m} />)}
               {loading && <TypingIndicator />}
               <div ref={messagesEndRef} />
@@ -208,7 +208,7 @@ Instruções:
               {QUICK_PROMPTS.map((p) => (
                 <button key={p} onClick={() => sendMessage(p)}
                   disabled={loading}
-                  className="text-xs px-2.5 py-1.5 rounded-lg cursor-pointer border transition-colors disabled:opacity-40"
+                  className="text-xs px-2.5 py-1.5 rounded-lg cursor-pointer border transition-colors disabled:opacity-40 flex-shrink-0"
                   style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text2)', fontFamily: "'Sora', sans-serif" }}>
                   {p}
                 </button>
@@ -223,11 +223,11 @@ Instruções:
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                 placeholder="Pergunte sobre seus gastos, investimentos ou metas..."
                 disabled={loading}
-                className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors"
+                className="flex-1 rounded-xl border px-4 py-2.5 text-sm outline-none transition-colors min-w-0"
                 style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text)', fontFamily: "'Sora', sans-serif" }}
               />
               <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
-                className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer border-0 transition-all disabled:opacity-40"
+                className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer border-0 transition-all disabled:opacity-40 flex-shrink-0"
                 style={{ background: 'var(--blue)' }}>
                 <Send size={15} color="#fff" />
               </button>
@@ -241,11 +241,11 @@ Instruções:
             <CardTitle>Contexto Enviado para IA</CardTitle>
             <div className="flex flex-col gap-3">
               {[
-                { label: 'Lucas – Entradas', val: fmt(ctx.Lucas.entradas), color: 'var(--green)' },
-                { label: 'Lucas – Saídas', val: fmt(ctx.Lucas.saidas), color: 'var(--red)' },
-                { label: 'Ana – Entradas', val: fmt(ctx.Ana.entradas), color: 'var(--green)' },
-                { label: 'Ana – Saídas', val: fmt(ctx.Ana.saidas), color: 'var(--red)' },
-                { label: 'Patrimônio Total', val: fmt(ctx.Lucas.investimentos.total + ctx.Ana.investimentos.total), color: 'var(--purple)' },
+                { label: 'Gustavo – Entradas', val: fmt(ctx.Gustavo.entradas), color: 'var(--green)' },
+                { label: 'Gustavo – Saídas', val: fmt(ctx.Gustavo.saidas), color: 'var(--red)' },
+                { label: 'Larissa – Entradas', val: fmt(ctx.Larissa.entradas), color: 'var(--green)' },
+                { label: 'Larissa – Saídas', val: fmt(ctx.Larissa.saidas), color: 'var(--red)' },
+                { label: 'Patrimônio Total', val: fmt(ctx.Gustavo.investimentos.total + ctx.Larissa.investimentos.total), color: 'var(--purple)' },
               ].map(({ label, val, color }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-xs" style={{ color: 'var(--text3)' }}>{label}</span>
@@ -269,7 +269,7 @@ Instruções:
           <Card>
             <CardTitle>JSON Completo</CardTitle>
             <pre className="text-xs overflow-x-auto overflow-y-auto"
-              style={{ color: 'var(--text3)', fontFamily: "'DM Mono', monospace", whiteSpace: 'pre-wrap', maxHeight: 240, lineHeight: 1.6 }}>
+              style={{ color: 'var(--text3)', fontFamily: "'DM Mono', monospace", whiteSpace: 'pre-wrap', maxHeight: 'min(240px, 40vh)', lineHeight: 1.6 }}>
               {JSON.stringify(ctx, null, 2)}
             </pre>
           </Card>

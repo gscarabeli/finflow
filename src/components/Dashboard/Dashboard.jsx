@@ -53,15 +53,18 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false)
   const pd = getActiveData()
 
-  const { entradas, saidas, saldo, catData, saldoContas } = useMemo(() => {
+  const { entradas, saidas, saldo, catData, saldoContas, saldoVR, nonVrCount } = useMemo(() => {
     const txs = pd.transacoes
     const entradas = txs.filter((t) => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0)
     const saidas = txs.filter((t) => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0)
     const catMap = {}
     txs.filter((t) => t.tipo === 'saida').forEach((t) => { catMap[t.cat] = (catMap[t.cat] || 0) + t.valor })
     const catData = Object.entries(catMap).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))
-    const saldoContas = pd.contas.reduce((s, c) => s + c.saldo, 0)
-    return { entradas, saidas, saldo: entradas - saidas, catData, saldoContas }
+    const isVR = (c) => c.tipo.toLowerCase().includes('vale refeição') || c.tipo.toLowerCase().includes('vr')
+    const saldoVR = pd.contas.filter(isVR).reduce((s, c) => s + c.saldo, 0)
+    const saldoContas = pd.contas.filter((c) => !isVR(c)).reduce((s, c) => s + c.saldo, 0)
+    const nonVrCount = pd.contas.filter((c) => !isVR(c)).length
+    return { entradas, saidas, saldo: entradas - saidas, catData, saldoContas, saldoVR, nonVrCount }
   }, [pd])
 
   const maxCat = catData[0]?.value || 1
@@ -73,7 +76,7 @@ export default function Dashboard() {
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
             {profile === 'casal' ? 'Visão Consolidada do Casal' : pd.nome}
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Dezembro 2024 · Dados em tempo real</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Abril 2026 · Dados em tempo real</p>
         </div>
         <Button onClick={() => setShowModal(true)}>
           <span className="flex items-center gap-1.5"><Plus size={14} /> Nova Transação</span>
@@ -81,16 +84,29 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <StatCard label="Entradas" value={fmt(entradas)} sub={`${pd.transacoes.filter(t => t.tipo === 'entrada').length} lançamentos`} color="var(--green)" dot="var(--green)" />
         <StatCard label="Saídas" value={fmt(saidas)} sub={`${pd.transacoes.filter(t => t.tipo === 'saida').length} lançamentos`} color="var(--red)" dot="var(--red)" />
         <StatCard label="Saldo do Mês" value={(saldo >= 0 ? '+' : '') + fmt(saldo)} sub={saldo >= 0 ? 'Superávit' : 'Déficit'} color={saldo >= 0 ? 'var(--green)' : 'var(--red)'} dot="var(--blue)" />
-        <StatCard label="Saldo em Conta" value={fmt(saldoContas)} sub={`${pd.contas.length} contas/cartões`} color={saldoContas >= 0 ? 'var(--purple)' : 'var(--red)'} dot="var(--purple)" />
+        <StatCard label="Saldo em Conta" value={fmt(saldoContas)} sub={`${nonVrCount} contas/cartões • VR separado`} color={saldoContas >= 0 ? 'var(--purple)' : 'var(--red)'} dot="var(--purple)" />
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      {saldoVR !== 0 && (
+        <div className="rounded-2xl border p-4 mb-6"
+          style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Saldo VR (Alelo)</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>Valor extra reservado para alimentação, não entra no saldo principal.</div>
+            </div>
+            <div className="text-lg font-semibold font-mono" style={{ color: 'var(--cyan)' }}>{fmt(saldoVR)}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Transactions */}
-        <div className="col-span-2">
+        <div className="lg:col-span-2">
           <Card>
             <CardTitle right={<Badge color="blue">{pd.transacoes.length}</Badge>}>Últimas Transações</CardTitle>
             <div className="flex flex-col gap-0.5">
@@ -171,18 +187,20 @@ export default function Dashboard() {
       {/* Pie chart */}
       <Card>
         <CardTitle>Distribuição de Gastos por Categoria</CardTitle>
-        <div className="flex gap-6 items-center">
-          <ResponsiveContainer width={180} height={160}>
-            <PieChart>
-              <Pie data={catData} cx="50%" cy="50%" innerRadius={48} outerRadius={76} dataKey="value" paddingAngle={2}>
-                {catData.map((entry) => (
-                  <Cell key={entry.name} fill={CAT_COLORS[entry.name] || '#9aa0b8'} stroke="transparent" />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 flex-1">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          <div className="flex-shrink-0 mx-auto lg:mx-0">
+            <ResponsiveContainer width={180} height={160}>
+              <PieChart>
+                <Pie data={catData} cx="50%" cy="50%" innerRadius={48} outerRadius={76} dataKey="value" paddingAngle={2}>
+                  {catData.map((entry) => (
+                    <Cell key={entry.name} fill={CAT_COLORS[entry.name] || '#9aa0b8'} stroke="transparent" />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 flex-1 min-w-0">
             {catData.map(({ name, value }) => (
               <div key={name} className="flex items-center gap-2 text-xs min-w-[120px]">
                 <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: CAT_COLORS[name] || '#9aa0b8' }} />
@@ -191,7 +209,7 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-          <div className="flex-shrink-0" style={{ width: 260, height: 160 }}>
+          <div className="flex-shrink-0 w-full lg:w-64 h-40">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={catData.slice(0, 5)} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />

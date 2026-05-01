@@ -30,10 +30,45 @@ export const useStore = create((set, get) => ({
 
   // --- API Key IA
   apiKey: loadLS('finflow_apikey', ''),
+  authenticated: loadLS('finflow_auth', false),
+  authProfile: loadLS('finflow_auth_profile', 'eu'),
+  themeByProfile: loadLS('finflow_theme', { eu: 'default', ela: 'larissa', casal: 'casal' }),
+  passwordHash: loadLS('finflow_pwd_hash', null),
 
   // --- Actions
   setProfile: (profile) => set({ profile }),
   setTab: (tab) => set({ tab }),
+  login: (profile, password) => {
+    const { passwordHash } = get()
+    // Validação simples: se não há hash armazenado, usar a primeira senha como padrão
+    if (!passwordHash) {
+      const hash = btoa(password) // encoding simples (NÃO é seguro para produção)
+      saveLS('finflow_pwd_hash', hash)
+      saveLS('finflow_auth', true)
+      saveLS('finflow_auth_profile', profile)
+      set({ authenticated: true, authProfile: profile, profile, passwordHash: hash })
+      return true
+    }
+    // Se há hash, validar a senha
+    const inputHash = btoa(password)
+    if (inputHash === passwordHash) {
+      saveLS('finflow_auth', true)
+      saveLS('finflow_auth_profile', profile)
+      set({ authenticated: true, authProfile: profile, profile })
+      return true
+    }
+    return false
+  },
+  logout: () => {
+    saveLS('finflow_auth', false)
+    set({ authenticated: false, profile: 'eu' })
+  },
+  setTheme: (theme) => {
+    const { profile, themeByProfile } = get()
+    const updated = { ...themeByProfile, [profile]: theme }
+    saveLS('finflow_theme', updated)
+    set({ themeByProfile: updated })
+  },
   setApiKey: (apiKey) => {
     saveLS('finflow_apikey', apiKey)
     set({ apiKey })
@@ -45,8 +80,8 @@ export const useStore = create((set, get) => ({
       const e = profiles.eu
       const a = profiles.ela
       const allTx = [
-        ...e.transacoes.map((t) => ({ ...t, perfil: 'Lucas' })),
-        ...a.transacoes.map((t) => ({ ...t, perfil: 'Ana' })),
+        ...e.transacoes.map((t) => ({ ...t, perfil: 'Gustavo' })),
+        ...a.transacoes.map((t) => ({ ...t, perfil: 'Larissa' })),
       ].sort((x, y) => new Date(y.data) - new Date(x.data))
       return {
         nome: 'Visão do Casal',
@@ -155,9 +190,9 @@ export const useStore = create((set, get) => ({
       }
     }
     return {
-      mes: 'dezembro/2024',
-      Lucas: summarize(profiles.eu),
-      Ana: summarize(profiles.ela),
+      mes: new Date().toLocaleString('pt-BR', { month: 'long', year: '2-digit' }).replace(' de ', '/'),
+      Gustavo: summarize(profiles.eu),
+      Larissa: summarize(profiles.ela),
       sonhos_do_casal: sonhos.map((s) => ({
         nome: s.nome,
         meta: s.meta,

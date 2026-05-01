@@ -3,6 +3,24 @@ import { Plus, Trash2, Edit3, Target, TrendingUp, Calendar, Star } from 'lucide-
 import { useStore } from '../../store/useStore.js'
 import { fmt, fmtShort, monthsUntil } from '../../hooks/useUtils.js'
 import { Card, CardTitle, Badge, ProgressBar, Modal, Input, Button } from '../shared/UI.jsx'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const EMOJI_OPTIONS = ['🏠', '💍', '✈️', '🚗', '🎊', '🎓', '💻', '🏖️', '🛥️', '🏋️', '📷', '🎸', '🌎', '🏔️', '🍕', '🐾', '👶', '🏗️', '💰', '🎯']
 const COLOR_OPTIONS = ['#3b82f6', '#ec4899', '#14b8a6', '#a78bfa', '#f59e0b', '#22c55e', '#ef4444', '#06b6d4', '#f97316', '#8b5cf6']
@@ -37,7 +55,7 @@ function SonhoModal({ open, onClose, sonho }) {
       {/* Emoji picker */}
       <div className="mb-3">
         <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text3)' }}>Ícone</label>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
           {EMOJI_OPTIONS.map((e) => (
             <button key={e} onClick={() => set('emoji', e)}
               className="w-8 h-8 rounded-lg text-base cursor-pointer transition-all border-0"
@@ -50,7 +68,7 @@ function SonhoModal({ open, onClose, sonho }) {
 
       <Input label="Nome do Sonho" placeholder="Ex: Casa Própria" value={form.nome} onChange={(e) => set('nome', e.target.value)} />
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Input label="Meta (R$)" type="number" placeholder="600000" value={form.meta} onChange={(e) => set('meta', e.target.value)} />
         <Input label="Acumulado (R$)" type="number" placeholder="0" value={form.acumulado} onChange={(e) => set('acumulado', e.target.value)} />
       </div>
@@ -60,7 +78,7 @@ function SonhoModal({ open, onClose, sonho }) {
       {/* Color picker */}
       <div className="mb-3">
         <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text3)' }}>Cor</label>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
           {COLOR_OPTIONS.map((c) => (
             <button key={c} onClick={() => set('cor', c)}
               className="w-6 h-6 rounded-full cursor-pointer border-2 transition-all"
@@ -218,10 +236,40 @@ function SonhoCard({ sonho, onEdit }) {
   )
 }
 
+function SortableItem({ id, children }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children}
+    </div>
+  )
+}
+
 export default function Sonhos() {
-  const { sonhos } = useStore()
+  const { sonhos, updateSonho } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [editingSonho, setEditingSonho] = useState(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   const totalMeta = sonhos.reduce((s, x) => s + x.meta, 0)
   const totalAcumulado = sonhos.reduce((s, x) => s + x.acumulado, 0)
@@ -237,6 +285,22 @@ export default function Sonhos() {
     setEditingSonho(null)
   }
 
+  const handleDragEnd = (event) => {
+    const { active, over } = event
+
+    if (active.id !== over.id) {
+      const oldIndex = sonhos.findIndex((item) => item.id === active.id)
+      const newIndex = sonhos.findIndex((item) => item.id === over.id)
+
+      const reorderedSonhos = arrayMove(sonhos, oldIndex, newIndex)
+
+      // Update priorities based on new order
+      reorderedSonhos.forEach((sonho, index) => {
+        updateSonho(sonho.id, { prioridade: index + 1 })
+      })
+    }
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -250,8 +314,8 @@ export default function Sonhos() {
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
-        <div className="rounded-2xl border p-5 col-span-2" style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+        <div className="rounded-2xl border p-5 md:col-span-2" style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}>
           <div className="text-xs font-semibold tracking-widest uppercase mb-2" style={{ color: 'var(--text3)' }}>Progresso Geral dos Sonhos</div>
           <div className="flex justify-between text-xs mb-2" style={{ color: 'var(--text3)' }}>
             <span><span className="text-lg font-semibold" style={{ color: 'var(--text)' }}>{totalPct}%</span> concluído</span>
@@ -285,13 +349,23 @@ export default function Sonhos() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
-          {sonhos
-            .sort((a, b) => a.prioridade - b.prioridade)
-            .map((s) => (
-              <SonhoCard key={s.id} sonho={s} onEdit={openEdit} />
-            ))}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={sonhos.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {sonhos
+                .sort((a, b) => a.prioridade - b.prioridade)
+                .map((s) => (
+                  <SortableItem key={s.id} id={s.id}>
+                    <SonhoCard sonho={s} onEdit={openEdit} />
+                  </SortableItem>
+                ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* Timeline view */}
