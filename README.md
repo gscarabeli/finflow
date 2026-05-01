@@ -182,10 +182,10 @@ finflow/
 
 ## 🤖 Configurar a IA
 
-1. Acesse: https://console.anthropic.com
-2. Crie uma conta (gratuita para começar)
-3. Vá em **API Keys** → **Create Key**
-4. Copie a chave (começa com `sk-ant-api...`)
+1. Acesse: https://console.cloud.google.com/
+2. Crie um projeto no Google Cloud e habilite a API Generative AI
+3. Vá em **APIs e serviços** → **Credenciais** → **Criar credenciais** → **Chave de API**
+4. Copie a chave gerada
 5. No FinFlow, vá na aba **Consultoria IA**
 6. Cole a chave no campo amarelo e clique **Salvar**
 
@@ -196,7 +196,7 @@ A chave fica salva no localStorage do navegador e não é compartilhada com ning
 ## 💾 Dados e Privacidade
 
 - **100% local:** todos os dados ficam no `localStorage` do navegador
-- **Sem servidor:** o sistema não faz nenhuma requisição externa (exceto para a API da Anthropic quando você usa a IA)
+- **Sem servidor:** o sistema não faz nenhuma requisição externa (exceto para a API da Google quando você usa a IA)
 - **Autenticação local:** uso de senha com encoding básico (não criptografado — veja seção de segurança)
 - **Para exportar seus dados:** abra o console do navegador (F12) → Console → `localStorage`
 
@@ -344,7 +344,7 @@ Object.keys(localStorage).forEach(k => {
 → Abra o DevTools (F12), vá em **Application** → **Local Storage**, procure por `finflow_pwd_hash` e delete. Depois recarregue e defina uma nova.
 
 **"IA não responde"**
-→ Verifique se a API Key está correta e tem créditos em https://console.anthropic.com
+→ Verifique se a API Key do Google Cloud está correta e se o modelo Gemini está habilitado.
 
 **"Dados desapareceram"**
 → Se limpou o localStorage ou trocou de navegador, os dados se perdem. Use **Exportar dados** antes ou edite `mockData.js` para ter dados padrão.
@@ -378,5 +378,5 @@ Este script:
 | Recharts | Gráficos |
 | Zustand | Estado global |
 | Lucide React | Ícones |
-| Anthropic API | IA (opcional) |
+| Google Gemini | IA (opcional) |
 | localStorage | Persistência de dados |

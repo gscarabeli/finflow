@@ -53,7 +53,7 @@ export default function IAChat() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Olá! 👋 Sou seu conselheiro financeiro pessoal.\n\nAnalisei seus dados financeiros e estou pronto para ajudar com dicas de otimização de gastos, estratégias de investimento e análise da saúde financeira do mês.\n\nInsira sua API Key da Anthropic acima e pode me perguntar o que quiser!',
+      content: 'Olá! 👋 Sou seu conselheiro financeiro pessoal.\n\nAnalisei seus dados financeiros e estou pronto para ajudar com dicas de otimização de gastos, estratégias de investimento e análise da saúde financeira do mês.\n\nInsira sua API Key do Google Gemini acima e pode me perguntar o que quiser!',
     },
   ])
   const [input, setInput] = useState('')
@@ -85,7 +85,7 @@ export default function IAChat() {
       setTimeout(() => {
         setMessages((prev) => [...prev, {
           role: 'assistant',
-          content: '⚠️ Insira sua Anthropic API Key para ativar a IA real. Você pode obter uma gratuitamente em console.anthropic.com',
+          content: '⚠️ Insira sua chave da API do Google Cloud para ativar a IA real. Você pode obter uma gratuitamente no Google Cloud Console.',
         }])
         setLoading(false)
       }, 500)
@@ -108,30 +108,46 @@ Instruções:
 - Considere sempre os sonhos e metas do casal nas sugestões`
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta2/models/gemini-1.5:generate?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 800,
-          system: systemPrompt,
-          messages: newHistory.map((m) => ({ role: m.role, content: m.content })),
+          prompt: {
+            messages: [
+              { author: 'system', content: [{ type: 'text', text: systemPrompt }] },
+              { author: 'user', content: [{ type: 'text', text: msg }] },
+            ],
+          },
+          temperature: 0.2,
+          max_output_tokens: 512,
         }),
       })
 
       const data = await response.json()
 
-      if (data.content?.[0]?.text) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.content[0].text }])
+      const assistantText = data?.candidates?.[0]?.content?.map((item) => item.text || '').join(' ').trim()
+        || data?.candidates?.[0]?.content?.find((item) => item.type === 'text')?.text
+        || data?.output?.[0]?.content?.[0]?.text
+        || ''
+
+      if (assistantText) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: assistantText }])
       } else if (data.error) {
         setMessages((prev) => [...prev, {
           role: 'assistant',
-          content: `⚠️ Erro da API: ${data.error.message || JSON.stringify(data.error)}\n\nVerifique se sua API Key está correta e tem créditos disponíveis.`,
+          content: `⚠️ Erro da API: ${data.error.message || JSON.stringify(data.error)}\n\nVerifique se sua chave do Google Cloud está correta e se o modelo Gemini está habilitado.`,
+        }])
+      } else if (!response.ok) {
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: `⚠️ Erro da API: ${response.status} ${response.statusText}\n\nVerifique sua chave do Google Cloud.`,
+        }])
+      } else {
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: '⚠️ Não foi possível ler a resposta da IA. Verifique sua chave e tente novamente.',
         }])
       }
     } catch (err) {
@@ -169,9 +185,9 @@ Instruções:
                 type="password"
                 value={keyInput}
                 onChange={(e) => { setKeyInput(e.target.value); setKeySaved(false) }}
-                placeholder="sk-ant-api..."
+                placeholder="Chave da API do Google Cloud"
                 onKeyDown={(e) => e.key === 'Enter' && saveKey()}
-                className="flex-1 rounded-xl border px-3 py-2 text-xs outline-none font-mono"
+                className="flex-1 rounded-xl border px-3 py-2 text-xs outline-none font-mono min-w-0"
                 style={{ background: 'var(--bg2)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
               <button onClick={saveKey}
@@ -182,7 +198,7 @@ Instruções:
             </div>
             {!apiKey && (
               <div className="text-xs mt-2" style={{ color: 'var(--amber)' }}>
-                Obtenha sua chave gratuita em <span className="underline cursor-pointer">console.anthropic.com</span>
+                Obtenha sua chave gratuita no <span className="underline cursor-pointer">Google Cloud Console</span>
               </div>
             )}
           </div>
