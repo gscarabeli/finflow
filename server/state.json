@@ -5,11 +5,26 @@
   "profiles": {
     "eu": {
       "nome": "Gustavo",
-      "contas": [],
+      "contas": [
+        {
+          "id": "c1",
+          "nome": "VR",
+          "tipo": "vale-refeicao",
+          "saldo": 500,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "c2",
+          "nome": "Conta Corrente",
+          "tipo": "conta-corrente",
+          "saldo": 2500,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
       "investimentos": {
         "reserva": {
           "atual": 0,
-          "meta": 0
+          "meta": 10000
         },
         "previdencia": 0,
         "acoes": 0,
@@ -20,11 +35,26 @@
     },
     "ela": {
       "nome": "Larissa",
-      "contas": [],
+      "contas": [
+        {
+          "id": "c3",
+          "nome": "VR",
+          "tipo": "vale-refeicao",
+          "saldo": 400,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "c4",
+          "nome": "Conta Corrente",
+          "tipo": "conta-corrente",
+          "saldo": 1800,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
       "investimentos": {
         "reserva": {
           "atual": 0,
-          "meta": 0
+          "meta": 8000
         },
         "previdencia": 0,
         "acoes": 0,

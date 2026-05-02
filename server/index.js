@@ -210,9 +210,74 @@ app.post('/api/transactions', authMiddleware, async (req, res) => {
     cat: sanitizeText(data.cat),
     id: `t${Date.now()}`,
   }
+
+  // Se for entrada e especificar conta, atualizar saldo da conta
+  if (data.tipo === 'entrada' && data.contaId) {
+    const contaIndex = state.profiles[target].contas.findIndex(c => c.id === data.contaId)
+    if (contaIndex !== -1) {
+      state.profiles[target].contas[contaIndex].saldo += data.valor
+    }
+  }
+
+  // Se for saída e especificar conta, atualizar saldo da conta
+  if (data.tipo === 'saida' && data.contaId) {
+    const contaIndex = state.profiles[target].contas.findIndex(c => c.id === data.contaId)
+    if (contaIndex !== -1) {
+      state.profiles[target].contas[contaIndex].saldo -= data.valor
+    }
+  }
+
   state.profiles[target].transacoes.unshift(transaction)
   await saveState(state)
   return res.json(transaction)
+})
+
+app.put('/api/transactions/:id', authMiddleware, async (req, res) => {
+  const { profile } = req.user
+  const target = profile === 'casal' ? 'eu' : profile
+  const { id } = req.params
+  const data = req.body
+  const state = await loadState()
+  const index = state.profiles[target].transacoes.findIndex((tx) => tx.id === id)
+  if (index === -1) {
+    return res.status(404).json({ error: 'Transação não encontrada' })
+  }
+
+  const oldTransaction = state.profiles[target].transacoes[index]
+
+  // Reverter saldo da conta antiga se havia conta associada
+  if (oldTransaction.contaId) {
+    const oldContaIndex = state.profiles[target].contas.findIndex(c => c.id === oldTransaction.contaId)
+    if (oldContaIndex !== -1) {
+      if (oldTransaction.tipo === 'entrada') {
+        state.profiles[target].contas[oldContaIndex].saldo -= oldTransaction.valor
+      } else if (oldTransaction.tipo === 'saida') {
+        state.profiles[target].contas[oldContaIndex].saldo += oldTransaction.valor
+      }
+    }
+  }
+
+  // Aplicar novo saldo se houver nova conta
+  if (data.contaId) {
+    const newContaIndex = state.profiles[target].contas.findIndex(c => c.id === data.contaId)
+    if (newContaIndex !== -1) {
+      if (data.tipo === 'entrada') {
+        state.profiles[target].contas[newContaIndex].saldo += data.valor
+      } else if (data.tipo === 'saida') {
+        state.profiles[target].contas[newContaIndex].saldo -= data.valor
+      }
+    }
+  }
+
+  state.profiles[target].transacoes[index] = {
+    ...state.profiles[target].transacoes[index],
+    ...data,
+    desc: data.desc ? sanitizeText(data.desc) : state.profiles[target].transacoes[index].desc,
+    cat: data.cat ? sanitizeText(data.cat) : state.profiles[target].transacoes[index].cat,
+    updatedAt: new Date().toISOString(),
+  }
+  await saveState(state)
+  return res.json(state.profiles[target].transacoes[index])
 })
 
 app.delete('/api/transactions/:id', authMiddleware, async (req, res) => {
@@ -239,6 +304,70 @@ app.put('/api/investimentos', authMiddleware, async (req, res) => {
   }
   await saveState(state)
   return res.json(state.profiles[target].investimentos)
+})
+
+// CRUD para Contas/Cartões
+app.get('/api/contas', authMiddleware, async (req, res) => {
+  const { profile } = req.user
+  const state = await loadState()
+  if (profile === 'casal') {
+    return res.json({
+      eu: state.profiles.eu.contas,
+      ela: state.profiles.ela.contas,
+    })
+  }
+  return res.json({ contas: state.profiles[profile].contas })
+})
+
+app.post('/api/contas', authMiddleware, async (req, res) => {
+  const { profile } = req.user
+  const data = req.body
+  if (!data || !data.nome || !data.tipo || typeof data.saldo !== 'number') {
+    return res.status(400).json({ error: 'Dados da conta inválidos' })
+  }
+  const state = await loadState()
+  const target = profile === 'casal' ? 'eu' : profile
+  const conta = {
+    ...data,
+    nome: sanitizeText(data.nome),
+    tipo: sanitizeText(data.tipo),
+    id: `c${Date.now()}`,
+    createdAt: new Date().toISOString(),
+  }
+  state.profiles[target].contas.push(conta)
+  await saveState(state)
+  return res.json(conta)
+})
+
+app.put('/api/contas/:id', authMiddleware, async (req, res) => {
+  const { profile } = req.user
+  const target = profile === 'casal' ? 'eu' : profile
+  const { id } = req.params
+  const data = req.body
+  const state = await loadState()
+  const index = state.profiles[target].contas.findIndex((conta) => conta.id === id)
+  if (index === -1) {
+    return res.status(404).json({ error: 'Conta não encontrada' })
+  }
+  state.profiles[target].contas[index] = {
+    ...state.profiles[target].contas[index],
+    ...data,
+    nome: data.nome ? sanitizeText(data.nome) : state.profiles[target].contas[index].nome,
+    tipo: data.tipo ? sanitizeText(data.tipo) : state.profiles[target].contas[index].tipo,
+    updatedAt: new Date().toISOString(),
+  }
+  await saveState(state)
+  return res.json(state.profiles[target].contas[index])
+})
+
+app.delete('/api/contas/:id', authMiddleware, async (req, res) => {
+  const { profile } = req.user
+  const target = profile === 'casal' ? 'eu' : profile
+  const state = await loadState()
+  const { id } = req.params
+  state.profiles[target].contas = state.profiles[target].contas.filter((conta) => conta.id !== id)
+  await saveState(state)
+  return res.json({ success: true })
 })
 
 app.post('/api/gemini', authMiddleware, async (req, res) => {

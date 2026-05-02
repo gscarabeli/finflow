@@ -68,7 +68,7 @@ Gere um secret forte:
 - Use https://www.uuidgenerator.net/ (versão 4)
 - Ou gere via terminal: `openssl rand -hex 32`
 
-### 4. Problemas Comuns no Deploy
+### 3. Problemas Comuns no Deploy
 
 #### ❌ Erro: "No matching version found for @types/react-dom@^18.3.12"
 **Sintomas:** Build falha com erro de versão não encontrada
