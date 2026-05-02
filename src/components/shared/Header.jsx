@@ -15,9 +15,9 @@ const PROFILES = [
 ]
 
 const THEME_OPTIONS = [
-  { id: 'default', label: 'Azul' },
+  { id: 'default', label: 'Verde' },
   { id: 'larissa', label: 'Rosa' },
-  { id: 'casal', label: 'Verde' },
+  { id: 'casal', label: 'Azul' },
   { id: 'sunset', label: 'Laranja' },
 ]
 

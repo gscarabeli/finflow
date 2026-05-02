@@ -88,7 +88,7 @@ export default function Dashboard() {
         <StatCard label="Entradas" value={fmt(entradas)} sub={`${pd.transacoes.filter(t => t.tipo === 'entrada').length} lançamentos`} color="var(--green)" dot="var(--green)" />
         <StatCard label="Saídas" value={fmt(saidas)} sub={`${pd.transacoes.filter(t => t.tipo === 'saida').length} lançamentos`} color="var(--red)" dot="var(--red)" />
         <StatCard label="Saldo do Mês" value={(saldo >= 0 ? '+' : '') + fmt(saldo)} sub={saldo >= 0 ? 'Superávit' : 'Déficit'} color={saldo >= 0 ? 'var(--green)' : 'var(--red)'} dot="var(--blue)" />
-        <StatCard label="Saldo em Conta" value={fmt(saldoContas)} sub={`${nonVrCount} contas/cartões • VR separado`} color={saldoContas >= 0 ? 'var(--purple)' : 'var(--red)'} dot="var(--purple)" />
+        <StatCard label="Saldo em Conta" value={fmt(saldoContas)} sub={`${nonVrCount} contas/cartões`} color={saldoContas >= 0 ? 'var(--purple)' : 'var(--red)'} dot="var(--purple)" />
       </div>
 
       {saldoVR !== 0 && (

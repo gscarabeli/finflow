@@ -26,21 +26,14 @@ export const MOCK_DATA = {
       { id: 'c7', nome: 'Santander', tipo: 'Cartão de Crédito', saldo: 0.00 }
     ],
     investimentos: {
-      reserva: { atual: 7500, meta: 20000 },
-      previdencia: 4200,
-      acoes: 1800,
-      fundos: 3200,
-      cdi: 5600,
+      reserva: { atual: 0, meta: 20000 },
+      previdencia: 0,
+      acoes: 0,
+      fundos: 0,
+      cdi: 0,
     },
     transacoes: [
-      { id: 't13', desc: 'Salário', valor: 4800, tipo: 'entrada', cat: 'Salário', data: '2024-12-01' },
-      { id: 't14', desc: 'Supermercado', valor: 290.00, tipo: 'saida', cat: 'Alimentação', data: '2024-12-03' },
-      { id: 't15', desc: 'Uber / 99', valor: 78.50, tipo: 'saida', cat: 'Transporte', data: '2024-12-04' },
-      { id: 't16', desc: 'Salão de Beleza', valor: 180.00, tipo: 'saida', cat: 'Lazer', data: '2024-12-05' },
-      { id: 't17', desc: 'Farmácia', valor: 67.20, tipo: 'saida', cat: 'Saúde', data: '2024-12-07' },
-      { id: 't18', desc: 'Inglês Online', valor: 149.00, tipo: 'saida', cat: 'Educação', data: '2024-12-08' },
-      { id: 't19', desc: 'Freelance Redação', valor: 600, tipo: 'entrada', cat: 'Freelance', data: '2024-12-09' },
-      { id: 't20', desc: 'Restaurante', valor: 95.00, tipo: 'saida', cat: 'Alimentação', data: '2024-12-10' },
+      // { id: 't13', desc: 'Salário', valor: 4800, tipo: 'entrada', cat: 'Salário', data: '2024-12-01' },
     ],
   },
 }
