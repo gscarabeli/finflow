@@ -147,14 +147,20 @@ function SonhoCard({ sonho, onEdit }) {
             </div>
           </div>
           <div className="flex gap-1">
-            <button onClick={() => onEdit(sonho)}
+            <button onClick={(e) => {
+              e.stopPropagation()
+              onEdit(sonho)
+            }}
               className="p-1.5 rounded-lg border-0 bg-transparent cursor-pointer transition-colors"
               style={{ color: 'var(--text3)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text3)'}>
               <Edit3 size={13} />
             </button>
-            <button onClick={() => deleteSonho(sonho.id)}
+            <button onClick={(e) => {
+              e.stopPropagation()
+              deleteSonho(sonho.id)
+            }}
               className="p-1.5 rounded-lg border-0 bg-transparent cursor-pointer transition-colors"
               style={{ color: 'var(--text3)' }}
               onMouseEnter={(e) => e.currentTarget.style.color = 'var(--red)'}
