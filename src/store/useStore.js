@@ -65,7 +65,39 @@ export const useStore = create((set, get) => ({
   authProfile: loadLS(STORAGE_KEYS.AUTH_PROFILE, 'eu', false),
   themeByProfile: loadLS(STORAGE_KEYS.THEME, { eu: 'default', ela: 'larissa', casal: 'casal' }, true),
 
-  setProfile: (profile) => set({ profile }),
+  setProfile: async (profile) => {
+    // Se já temos dados carregados para este perfil, apenas muda
+    if (get().profiles[profile] && get().profiles[profile].transacoes) {
+      set({ profile })
+      saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
+      return
+    }
+
+    // Caso contrário, carrega os dados
+    try {
+      const appData = await apiLoadProfileData(profile)
+      const sonhos = await apiLoadSonhos()
+
+      const profiles = { ...get().profiles }
+      if (profile === 'casal') {
+        profiles.eu = appData.eu
+        profiles.ela = appData.ela
+      } else {
+        profiles[profile] = appData[profile]
+      }
+
+      set({
+        profile,
+        authProfile: profile,
+        profiles,
+        sonhos,
+      })
+      saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
+    } catch (error) {
+      console.error('Erro ao carregar dados do perfil:', error)
+      throw error
+    }
+  },
   setTab: (tab) => set({ tab }),
 
   initialize: async () => {
@@ -106,7 +138,7 @@ export const useStore = create((set, get) => ({
   },
 
   login: async (profile, password) => {
-    const limit = loginLimiter.checkLimit(profile)
+    const limit = loginLimiter.checkLimit(profile || 'general')
     if (!limit.allowed) {
       const minutes = Math.ceil(limit.resetIn / 60000)
       throw new Error(`Muitas tentativas de login. Tente novamente em ${minutes} minuto(s).`)
@@ -117,6 +149,22 @@ export const useStore = create((set, get) => ({
       throw new Error('Entrada contém caracteres inválidos')
     }
 
+    // Se profile for null, apenas valida a senha sem carregar dados específicos
+    if (profile === null) {
+      const response = await apiLogin('eu', password) // Usa 'eu' como referência para validação
+      const { token } = response
+      saveLS(STORAGE_KEYS.AUTH_TOKEN, token, false)
+      // Não salva authProfile ainda - será definido na seleção de perfil
+      set({
+        authenticated: true,
+        authToken: token,
+        // Não define profile ainda
+      })
+      loginLimiter.reset('general')
+      return true
+    }
+
+    // Se profile foi especificado, carrega os dados normalmente
     const response = await apiLogin(profile, password)
     const { token } = response
     saveLS(STORAGE_KEYS.AUTH_TOKEN, token, false)

@@ -1,6 +1,6 @@
 # 💰 FinFlow — Gestão Financeira Pessoal
 
-Sistema local com backend Node e frontend React. Os dados são mantidos no servidor local (`server/state.json`) e também em `sessionStorage` no navegador. A IA usa o Google Gemini apenas quando ativada.
+Sistema completo de gestão financeira pessoal com backend Node.js e frontend React. Inclui controle de contas, transações, investimentos, sonhos e consultoria com IA integrada.
 
 ---
 
@@ -76,7 +76,7 @@ Você verá algo assim no terminal:
 
 Abra: **http://localhost:5173**
 
-O sistema inicia com dados zerados para você criar as contas, transações e sonhos a partir do primeiro login.
+**Primeiro acesso:** Defina uma senha única para toda a conta, depois escolha qual perfil acessar (Gustavo, Larissa ou Casal).
 
 ---
 
@@ -90,32 +90,37 @@ No terminal, pressione `Ctrl + C`
 
 ```
 finflow/
+├── server/
+│   ├── index.js              ← Backend Express com API REST
+│   └── state.json            ← Dados persistidos localmente
 ├── public/
 │   └── favicon.svg
 ├── src/
 │   ├── components/
 │   │   ├── shared/
-│   │   │   ├── Header.jsx        ← Navegação, perfil e temas
-│   │   │   └── UI.jsx            ← Componentes reutilizáveis
+│   │   │   ├── Header.jsx    ← Navegação, perfis e temas
+│   │   │   └── UI.jsx        ← Componentes reutilizáveis
 │   │   ├── Login/
-│   │   │   └── Login.jsx         ← Tela de autenticação
+│   │   │   └── Login.jsx     ← Sistema de login único + seleção de perfil
 │   │   ├── Dashboard/
-│   │   │   └── Dashboard.jsx     ← Controle de caixa mensal
+│   │   │   └── Dashboard.jsx ← Controle financeiro + edição de transações
+│   │   ├── Contas/
+│   │   │   └── Contas.jsx    ← CRUD completo de contas/cartões
 │   │   ├── Investimentos/
-│   │   │   └── Investimentos.jsx ← Portfólio e reserva
+│   │   │   └── Investimentos.jsx ← Portfólio e reserva de emergência
 │   │   ├── Sonhos/
-│   │   │   └── Sonhos.jsx        ← Metas e sonhos do casal
+│   │   │   └── Sonhos.jsx    ← Metas e sonhos do casal
 │   │   └── IAChat/
-│   │       └── IAChat.jsx        ← Consultoria com IA
+│   │       └── IAChat.jsx    ← Consultoria com IA integrada
 │   ├── data/
-│   │   └── mockData.js           ← Dados fictícios iniciais
+│   │   └── mockData.js       ← Dados fictícios iniciais
 │   ├── hooks/
-│   │   └── useUtils.js           ← Funções auxiliares
+│   │   └── useUtils.js       ← Funções auxiliares (formatação, etc.)
 │   ├── store/
-│   │   └── useStore.js           ← Estado global (Zustand)
-│   ├── App.jsx                   ← App com temas dinâmicos
-│   ├── main.jsx
-│   └── index.css
+│   │   └── useStore.js       ← Estado global (Zustand)
+│   ├── App.jsx               ← App principal com roteamento
+│   ├── main.jsx              ← Ponto de entrada React
+│   └── index.css             ← Estilos globais + variáveis CSS
 ├── index.html
 ├── package.json
 ├── vite.config.js
@@ -126,209 +131,172 @@ finflow/
 
 ---
 
-## ⚙️ Funcionalidades
+## ⚙️ Funcionalidades Completas
 
-### Autenticação
-- Sistema de login por perfil com senha
-- Senha salva localmente no navegador (com encoding básico)
-- Logout disponível no cabeçalho
+### 🔐 Sistema de Autenticação
+- **Login único**: Uma senha para acessar toda a conta
+- **Seleção de perfil**: Após login, escolha entre Gustavo, Larissa ou Casal
+- **Perfis diferenciados**: Cada perfil tem dados independentes
+- **Logout**: Disponível no cabeçalho da aplicação
 
-### Temas
-- 4 temas personalizáveis (Azul, Rosa, Verde, Laranja)
-- Cada perfil pode ter um tema diferente
-- Alteração de fundo, texto e componentes dinamicamente
+### 🎨 Temas Personalizáveis
+- **4 temas**: Azul (padrão), Rosa (Larissa), Verde (Casal), Laranja (Sunset)
+- **Por perfil**: Cada perfil pode ter um tema diferente
+- **Dinâmico**: Mudança instantânea de cores e interface
 
-### Dashboard
-- Visão de entradas, saídas e saldo do mês
-- Saldo do Alelo (VR) exibido separadamente
-- Lista de transações com categorias
-- Gráficos de pizza e barras por categoria
-- Gerenciamento de contas e cartões
-- Adicionar e excluir transações
-- Layout responsivo para mobile/tablet
+### 📊 Dashboard Completo
+- **Visão financeira**: Entradas, saídas e saldo do mês
+- **Saldo VR**: Vale Refeição separado do saldo principal
+- **Transações**: Lista completa com edição e exclusão
+- **Gráficos**: Pizza e barras por categoria de gastos
+- **Responsivo**: Layout adaptado para mobile/tablet/desktop
+- **Perfil Casal**: Apenas visualização (sem criar/editar)
 
-### Investimentos
-- Acompanhamento de reserva de emergência com barra de progresso
-- Distribuição do portfólio (CDB, Fundos, Previdência, Ações)
-- Gráfico visual da carteira
-- Responsividade para telas menores
+### 💳 Contas e Cartões (CRUD Completo)
+- **Tipos suportados**: Conta Corrente, Investimento, Vale Refeição, Cartão de Crédito
+- **Operações**: Criar, editar, excluir contas
+- **Saldo automático**: Atualização em tempo real
+- **Perfil Casal**: Apenas visualização consolidada
 
-### Sonhos & Metas
-- Cadastro de objetivos financeiros (Casa, Viagem, Aliança, etc.)
-- Progresso visual de cada sonho
-- Cálculo automático de quanto guardar por mês para atingir o prazo
-- Linha do tempo de todos os sonhos
-- Reordenação por arrastar e soltar — ajuste a prioridade dos sonhos facilmente
-- Edição e exclusão de sonhos
-- Disponível apenas no perfil "Casal" — sonhos compartilhados do casal
+### 📈 Investimentos e Reserva
+- **Reserva de emergência**: Meta configurável com progresso visual
+- **Portfólio**: CDB, Fundos, Previdência, Ações
+- **Gráfico visual**: Distribuição da carteira
+- **Transações**: Adicionar/remover investimentos
+- **Responsividade**: Interface otimizada para todos os dispositivos
 
-### Consultoria IA
-- Chat com IA usando seus dados financeiros reais como contexto
-- Análise de gastos, dicas de investimento e saúde financeira
-- Prompts rápidos pré-definidos
-- Exibe o JSON enviado para a IA (transparência total)
+### 🎯 Sonhos e Metas
+- **Objetivos compartilhados**: Disponível apenas no perfil Casal
+- **Progresso visual**: Barras de progresso para cada sonho
+- **Cálculo automático**: Quanto guardar por mês para atingir prazos
+- **Reordenação**: Arrastar e soltar para ajustar prioridades
+- **CRUD completo**: Criar, editar, excluir sonhos
+- **Emojis**: Personalização visual dos objetivos
 
-### Sistema de Perfis
-- **Gustavo** — visão individual
-- **Larissa** — visão individual
-- **Casal** — visão consolidada (soma de tudo)
+### 🤖 Consultoria IA Integrada
+- **Google Gemini**: Análise inteligente dos seus dados financeiros
+- **Contexto real**: IA usa suas transações, contas e investimentos
+- **Prompts pré-definidos**: Sugestões rápidas para diferentes análises
+- **Transparência**: Visualização do JSON enviado para a IA
+- **Disponível apenas no perfil Casal**
 
-### Informações Especiais
-- **Alelo (VR):** suporte para Vale Refeição separado do saldo principal
-- **Responsividade:** funciona em desktop, tablet e mobile
-- **Persistência:** todos os dados salvos automaticamente no localStorage
-
-### Responsividade Mobile
-- **Layout adaptativo**: Interface otimizada para desktop, tablet e mobile
-- **Grids responsivas**: Cards e componentes se ajustam automaticamente ao tamanho da tela
-- **Tipografia escalável**: Textos legíveis em qualquer dispositivo
-- **Navegação touch-friendly**: Botões e controles adequados para toque
-- **Consultoria IA**: Chat e contexto responsivos, sem overflow de texto
-- **Dashboard**: Estatísticas organizadas em grid 2x2 no mobile, expandindo para 4 colunas no desktop
+### 📱 Responsividade Total
+- **Mobile-first**: Interface otimizada para smartphones
+- **Tablet**: Layout adaptado para tablets
+- **Desktop**: Experiência completa em telas grandes
+- **Touch-friendly**: Controles adequados para toque
+- **Tipografia**: Fonte Sora consistente em todos os dispositivos
 
 ---
 
-## 🤖 Configurar a IA
+## 🤖 Configuração da IA
 
-A chave do Google AI Studio está pré-configurada no backend. Para trocar a chave, edite o valor de `DEFAULT_GEMINI_API_KEY` em `server/index.js`.
+A chave do Google AI Studio está pré-configurada no backend. Para trocar:
 
-Se quiser usar uma variável de ambiente em vez do valor fixo no código, defina `GEMINI_API_KEY` no servidor.
+1. Edite `DEFAULT_GEMINI_API_KEY` em `server/index.js`
+2. Ou defina a variável de ambiente `GEMINI_API_KEY`
 
-A IA só é chamada quando você usa a aba **Consultoria IA**, e as solicitações são proxyadas pelo backend local.
-
----
-
-## 💾 Dados e Privacidade
-
-- **Local:** os dados financeiros são mantidos no backend local em `server/state.json` e dados sensíveis de sessão também em `sessionStorage` do navegador
-- **IA:** a única requisição externa é para a API do Google Gemini quando você usa a consultoria IA
-- **Autenticação local:** uso de senha com hash PBKDF2 no backend
-- **Para exportar seus dados:** abra o console do navegador (F12) → Console → `localStorage`
+A IA só é chamada na aba **Consultoria IA** e as requisições são proxyadas pelo backend local.
 
 ---
 
-## 🔐 Autenticação e Segurança
+## 💾 Dados e Persistência
+
+- **Backend local**: Dados salvos em `server/state.json`
+- **SessionStorage**: Dados de sessão no navegador
+- **Sincronização**: Dados carregados automaticamente por perfil
+- **Export**: Console do navegador → `localStorage` para exportar
+
+---
+
+## 🔐 Segurança
 
 ### Como funciona
+1. **Senha única**: Uma senha para toda a conta
+2. **Hash PBKDF2**: Senha processada no backend (100k iterações)
+3. **Rate limiting**: Máximo 5 tentativas a cada 15 minutos
+4. **Local**: Autenticação processada localmente
 
-1. Na primeira vez que acessa, defina uma senha
-2. Essa senha é armazenada no `localStorage` com encoding básico (não é criptografia forte)
-3. O sistema valida a senha localmente e não envia nada para servidor externo
-
-### ⚠️ Aviso de Segurança Importante
-
-**NÃO use senhas sensíveis ou reais.** Este sistema foi desenvolvido para uso pessoal local e em repositórios públicos. A segurança é **limitada** porque:
-
-- ❌ A senha é armazenada no navegador (visível via DevTools)
-- ❌ O encoding é básico (`btoa`), não é criptografia real
-- ❌ Qualquer pessoa com acesso ao seu PC pode ver a senha
-- ❌ Se publicar em GitHub Pages, o código-fonte é público
-
-**Recomendações:**
-- Use uma senha simples (ex: `1234` ou `senha123`)
-- Não guarde dados financeiros reais/sensíveis no localStorage público
-- Se precisar segurança real, use um backend com autenticação OAuth/JWT
-- Considere usar este sistema apenas para planejamento/simulação
+### ⚠️ Avisos Importantes
+- **Não use senhas reais/sensíveis**
+- **Dados visíveis**: localStorage acessível via DevTools
+- **Desenvolvimento**: Sistema para uso pessoal local
+- **Produção**: Considere OAuth/JWT para segurança real
 
 ---
 
-## 🎨 Temas Personalizáveis
+## 🎨 Temas Disponíveis
 
-O FinFlow oferece **4 temas** que mudam cores de fundo, texto e interface:
-
-| Tema | Cor Principal | Visual |
-|---|---|---|
-| **Azul** (padrão) | Azul ciano | Noturno limpo |
-| **Rosa** (Larissa) | Rosa/Magenta | Noturno quente |
-| **Verde** (Casal) | Verde esperança | Noturno natural |
-| **Laranja** (Sunset) | Laranja/Ouro | Noturno quente/sunset |
-
-Cada perfil (Gustavo, Larissa, Casal) pode ter um tema diferente. A preferência fica salva no localStorage.
+| Tema | Cor Principal | Visual | Perfil Sugerido |
+|---|---|---|---|
+| **Azul** | Azul ciano | Noturno limpo | Gustavo |
+| **Rosa** | Rosa/Magenta | Noturno quente | Larissa |
+| **Verde** | Verde esperança | Noturno natural | Casal |
+| **Laranja** | Laranja/Ouro | Noturno sunset | Personalizado |
 
 ---
 
-## 🚀 Publicação em GitHub Pages
+## 🚀 Deploy no Render
 
-O FinFlow está pronto para ser publicado em GitHub Pages de forma estática.
+O FinFlow está configurado para deploy completo no Render.
 
-### Passos para publicar
+### Passos para deploy
 
-1. **Tenha um repositório Git:**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   ```
+1. **Build local** (opcional para testar):
+```bash
+npm run build
+```
 
-2. **Mude a URL base** (opcional, se usar `seu-usuario.github.io/finflow`):
-   Edite `vite.config.js`:
-   ```js
-   export default defineConfig({
-     base: './',  // ou '/finflow/' se em subdiretório
-     plugins: [react()],
-   })
-   ```
+2. **Suba para GitHub**:
+```bash
+git init
+git add .
+git commit -m "FinFlow completo"
+git remote add origin https://github.com/seu-usuario/finflow.git
+git push -u origin main
+```
 
-3. **Build para produção:**
-   ```bash
-   npm run build
-   ```
+3. **Deploy no Render**:
+   - Acesse https://render.com
+   - Conecte seu repositório Git
+   - Crie um **Web Service**
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm run start:server`
+   - **Environment**: `NODE_ENV=production`
+   - **(Opcional)**: `GEMINI_API_KEY` para IA
 
-4. **Push para GitHub:**
-   ```bash
-   git remote add origin https://github.com/seu-usuario/seu-repo.git
-   git branch -M main
-   git push -u origin main
-   ```
+4. **Acesse**: URL gerada pelo Render
 
-5. **Ative GitHub Pages nos settings:**
-   - Vá em **Settings** → **Pages**
-   - Source: **Deploy from a branch**
-   - Branch: **main**
-   - Pasta: **/root** (ou `/dist` se usar outro build)
-
-6. **Acesse:**
-   ```
-   https://seu-usuario.github.io
-   ```
+### ⚠️ Sobre GitHub Pages
+O GitHub Pages **não funciona** mais pois o sistema agora requer backend Node.js para autenticação e funcionalidades completas.
 
 ---
 
-## 🛠 Personalizar os Dados Iniciais
+## 🛠 Personalização
 
-Edite o arquivo `src/data/mockData.js` para alterar:
-- Nomes dos perfis (`eu.nome`, `ela.nome`)
-- Contas bancárias
-- Transações iniciais
+### Dados Iniciais
+Edite `src/data/mockData.js` para alterar:
+- Nomes dos perfis
+- Contas bancárias iniciais
+- Transações de exemplo
 - Metas de investimento
 - Sonhos do casal
 
-Após editar, salve o arquivo — o Vite recarrega automaticamente.
+### Temas
+Modifique as variáveis CSS em `src/components/Login/Login.jsx` para criar novos temas.
 
 ---
 
-## 🔄 Resetar Dados e Senha
+## 🔄 Resetar Dados
 
-Para começar do zero (apagar todos os dados e senha salvos):
+Para começar do zero:
 
-1. Abra o navegador em http://localhost:5173
-2. Pressione **F12** (DevTools)
-3. Vá na aba **Application** → **Local Storage** → **http://localhost:5173**
-4. Delete os itens:
-   - `finflow_auth`
-   - `finflow_pwd_hash`
-   - `finflow_eu`
-   - `finflow_ela`
-   - `finflow_sonhos`
-   - Outros itens `finflow_*`
-5. Recarregue a página (F5)
-6. Acesse novamente — você poderá definir uma nova senha
+1. **Frontend**: Abra DevTools (F12) → Application → Local Storage → Delete itens `finflow_*`
+2. **Backend**: Delete `server/state.json` e reinicie o servidor
+3. **Recarregue** a página
 
-> Importante: como o backend usa `server/state.json`, se quiser resetar o servidor também, restaure esse arquivo ao estado inicial vazio ou delete-o e reinicie o backend.
-
-Ou, via console (F12 → Console):
+Ou via console:
 ```javascript
-// Limpar tudo
 Object.keys(localStorage).forEach(k => {
   if (k.startsWith('finflow_')) localStorage.removeItem(k)
 })
@@ -339,70 +307,60 @@ Object.keys(localStorage).forEach(k => {
 ## 🐛 Problemas Comuns
 
 **"npm não é reconhecido"**
-→ Node.js não está instalado. Baixe em https://nodejs.org
+→ Instale Node.js em https://nodejs.org
 
-**"Porta 5173 já está em uso"**
-→ Execute `npm run dev -- --port 3000` para usar outra porta
+**"Porta 5173 ocupada"**
+→ `npm run dev -- --port 3000`
 
-**"Error: Cannot find module"**
-→ Rode `npm install` novamente
+**"Erro de módulo"**
+→ Execute `npm install` novamente
 
 **"Esqueci a senha"**
-→ Abra o DevTools (F12), vá em **Application** → **Local Storage**, procure por `finflow_pwd_hash` e delete. Depois recarregue e defina uma nova.
+→ Delete `finflow_pwd_hash` no localStorage via DevTools
 
 **"IA não responde"**
-→ Verifique se a API Key do Google Cloud está correta e se o modelo Gemini está habilitado.
+→ Verifique API Key do Google Gemini
 
-**"Dados desapareceram"**
-→ Se limpou o localStorage ou trocou de navegador, os dados se perdem. Use **Exportar dados** antes ou edite `mockData.js` para ter dados padrão.
-
----
-
-## 📤 Deploy
-
-### GitHub Pages
-O GitHub Pages só funciona para frontend estático. Como o FinFlow agora depende de um backend Node para autenticação e IA, o deploy completo não pode ser feito apenas com GitHub Pages.
-
-### Deploy completo (Node + Frontend)
-Use um serviço que suporte Node.js, como Render, Railway ou Fly.io.
-
-#### Passos gerais
-1. Faça o build do frontend:
-```bash
-npm install
-npm run build
-```
-2. Suba o código para um repositório Git
-3. No serviço de hospedagem, configure o comando de start:
-```bash
-npm run start:server
-```
-4. Defina a variável de ambiente opcional `NODE_ENV=production`
-5. Se quiser manter a chave da IA fora do código, defina também `GEMINI_API_KEY`
-
-#### Exemplo rápido no Render
-- Crie uma conta em https://render.com
-- Conecte seu repositório Git
-- Crie um serviço Web
-- Build command: `npm install && npm run build`
-- Start command: `npm run start:server`
-- Defina `NODE_ENV=production`
-- (Opcional) defina `GEMINI_API_KEY` no painel
-
-### Quando usar GitHub Pages
-Se precisar apenas de preview estático sem callbacks de IA e sem autenticação backend, a página estática pode ser publicada lá. Caso contrário, use um host Node.
+**"Perfil Casal sem botões"**
+→ Normal! É uma restrição de design para visualização consolidada
 
 ---
 
 ## 📦 Tecnologias
 
-| Tecnologia | Uso |
-|---|---|
-| React 18 | Interface |
-| Vite 5 | Build tool / servidor local |
-| Tailwind CSS | Estilização |
-| Recharts | Gráficos |
-| Zustand | Estado global |
-| Lucide React | Ícones |
-| Google Gemini | IA (opcional) |
-| localStorage | Persistência de dados |
+| Tecnologia | Versão | Uso |
+|---|---|---|
+| **React** | 18.x | Interface interativa |
+| **Vite** | 5.x | Build tool e dev server |
+| **Node.js/Express** | 18.x | Backend API REST |
+| **Tailwind CSS** | 3.x | Estilização responsiva |
+| **Zustand** | 4.x | Gerenciamento de estado |
+| **Recharts** | 2.x | Gráficos interativos |
+| **Google Gemini** | 2.5-flash | IA integrada |
+| **Lucide React** | 0.344 | Ícones modernos |
+| **React Markdown** | 9.x | Renderização de texto IA |
+
+---
+
+## 📈 Status do Projeto
+
+✅ **Funcionalidades Implementadas:**
+- Sistema de login único com perfis
+- Dashboard completo com edição de transações
+- CRUD de contas e cartões
+- Gestão de investimentos e reserva
+- Sistema de sonhos e metas
+- Consultoria IA integrada
+- Temas personalizáveis
+- Responsividade total
+- Deploy no Render
+
+🔄 **Próximas Melhorias:**
+- Export/import de dados
+- Relatórios PDF
+- Notificações push
+- Sincronização em nuvem
+
+---
+
+**FinFlow** — Sua gestão financeira pessoal completa e inteligente! 🚀

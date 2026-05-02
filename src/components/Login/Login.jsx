@@ -84,7 +84,8 @@ const ACCOUNTS = [
 ]
 
 export default function Login() {
-  const { login, themeByProfile } = useStore()
+  const { login, themeByProfile, setProfile } = useStore()
+  const [step, setStep] = useState('login') // 'login' or 'profile'
   const [selected, setSelected] = useState('eu')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -108,8 +109,11 @@ export default function Login() {
     setError('')
     
     try {
-      const success = await login(selected, password)
-      if (!success) {
+      // Login sem perfil específico - apenas valida a senha
+      const success = await login(null, password)
+      if (success) {
+        setStep('profile')
+      } else {
         setError('Senha incorreta. Tente novamente.')
         setPassword('')
       }
@@ -119,6 +123,10 @@ export default function Login() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleProfileSelect = (profile) => {
+    setProfile(profile)
   }
 
   const handleKeyPress = (e) => {
@@ -137,61 +145,83 @@ export default function Login() {
               fin<span style={{ color: 'var(--blue)' }}>.</span>flow
             </div>
             <p className="text-sm mt-2" style={{ color: 'var(--text3)' }}>
-              Acesse suas finanças de qualquer lugar com segurança.
+              {step === 'login' 
+                ? 'Acesse suas finanças de qualquer lugar com segurança.'
+                : 'Escolha qual perfil deseja acessar'
+              }
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-6">
-            {ACCOUNTS.map((account) => (
-              <button
-                key={account.id}
-                type="button"
-                onClick={() => {
-                  setSelected(account.id)
+          {step === 'login' ? (
+            <>
+              <div className="text-xs uppercase tracking-[0.25em] mb-3" style={{ color: 'var(--text3)' }}>
+                Senha de acesso
+              </div>
+              <input
+                type="password"
+                placeholder="Digite sua senha"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value)
                   setError('')
                 }}
-                className="rounded-3xl border p-4 text-left transition-all duration-150"
-                style={{
-                  background: selected === account.id ? 'var(--bg4)' : 'var(--bg2)',
-                  borderColor: selected === account.id ? 'var(--blue)' : 'var(--border)',
-                  color: selected === account.id ? 'var(--text)' : 'var(--text2)',
-                }}
+                onKeyPress={handleKeyPress}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors mb-3"
+                style={{ background: 'var(--bg3)', borderColor: error ? 'var(--red)' : 'var(--border)', color: 'var(--text)', fontFamily: "'Sora', sans-serif" }}
+              />
+              {error && (
+                <div className="text-xs mb-3 p-2 rounded bg-red-500 bg-opacity-10" style={{ color: 'var(--red)' }}>
+                  {error}
+                </div>
+              )}
+
+              <Button 
+                onClick={handleLogin} 
+                disabled={loading}
+                className="w-full"
+                style={{ opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
               >
-                <div className="text-sm font-semibold">{account.label}</div>
-                <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>{account.subtitle}</div>
-              </button>
-            ))}
-          </div>
+                {loading ? 'Processando...' : 'Continuar'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-1 mb-6">
+                {ACCOUNTS.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => handleProfileSelect(account.id)}
+                    className="rounded-3xl border p-4 text-left transition-all duration-150 hover:scale-105"
+                    style={{
+                      background: 'var(--bg2)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.borderColor = 'var(--blue)'
+                      e.target.style.background = 'var(--bg4)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.borderColor = 'var(--border)'
+                      e.target.style.background = 'var(--bg2)'
+                    }}
+                  >
+                    <div className="text-sm font-semibold">{account.label}</div>
+                    <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>{account.subtitle}</div>
+                  </button>
+                ))}
+              </div>
 
-          <div className="text-xs uppercase tracking-[0.25em] mb-3" style={{ color: 'var(--text3)' }}>
-            Senha de acesso
-          </div>
-          <input
-            type="password"
-            placeholder="Digite uma senha"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value)
-              setError('')
-            }}
-            onKeyPress={handleKeyPress}
-            className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors mb-3"
-            style={{ background: 'var(--bg3)', borderColor: error ? 'var(--red)' : 'var(--border)', color: 'var(--text)', fontFamily: "'Sora', sans-serif" }}
-          />
-          {error && (
-            <div className="text-xs mb-3 p-2 rounded bg-red-500 bg-opacity-10" style={{ color: 'var(--red)' }}>
-              {error}
-            </div>
+              <Button 
+                onClick={() => setStep('login')}
+                variant="ghost"
+                className="w-full"
+              >
+                ← Voltar
+              </Button>
+            </>
           )}
-
-          <Button 
-            onClick={handleLogin} 
-            disabled={loading}
-            className="w-full"
-            style={{ opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
-          >
-            {loading ? 'Processando...' : `Entrar como ${ACCOUNTS.find((a) => a.id === selected).label}`}
-          </Button>
           
           <div className="text-xs mt-4 p-3 rounded-lg border" 
             style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text3)' }}>
