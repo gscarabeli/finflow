@@ -189,16 +189,14 @@ export default function Dashboard() {
         <CardTitle>Distribuição de Gastos por Categoria</CardTitle>
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           <div className="flex-shrink-0 mx-auto lg:mx-0">
-            <ResponsiveContainer width={180} height={160}>
-              <PieChart>
-                <Pie data={catData} cx="50%" cy="50%" innerRadius={48} outerRadius={76} dataKey="value" paddingAngle={2}>
-                  {catData.map((entry) => (
-                    <Cell key={entry.name} fill={CAT_COLORS[entry.name] || '#9aa0b8'} stroke="transparent" />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart width={180} height={160}>
+              <Pie data={catData} cx="50%" cy="50%" innerRadius={48} outerRadius={76} dataKey="value" paddingAngle={2}>
+                {catData.map((entry) => (
+                  <Cell key={entry.name} fill={CAT_COLORS[entry.name] || '#9aa0b8'} stroke="transparent" />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+            </PieChart>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 flex-1 min-w-0">
             {catData.map(({ name, value }) => (

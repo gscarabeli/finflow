@@ -190,6 +190,7 @@ export default function IAChat() {
   const [config, setConfig] = useState(DEFAULT_CONFIG)
   const [configOpen, setConfigOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(true)
+  const [jsonOpen, setJsonOpen] = useState(false)
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -465,10 +466,10 @@ export default function IAChat() {
               <>
                 <div className="flex flex-col gap-3 mt-4">
                   {[
-                    { label: 'Gustavo – Entradas', val: fmt(ctx.Gustavo.entradas), color: 'var(--green)' },
-                    { label: 'Gustavo – Saídas', val: fmt(ctx.Gustavo.saidas), color: 'var(--red)' },
-                    { label: 'Larissa – Entradas', val: fmt(ctx.Larissa.entradas), color: 'var(--green)' },
-                    { label: 'Larissa – Saídas', val: fmt(ctx.Larissa.saidas), color: 'var(--red)' },
+                    { label: 'Gustavo - Entradas', val: fmt(ctx.Gustavo.entradas), color: 'var(--green)' },
+                    { label: 'Gustavo - Saídas', val: fmt(ctx.Gustavo.saidas), color: 'var(--red)' },
+                    { label: 'Larissa - Entradas', val: fmt(ctx.Larissa.entradas), color: 'var(--green)' },
+                    { label: 'Larissa - Saídas', val: fmt(ctx.Larissa.saidas), color: 'var(--red)' },
                     { label: 'Patrimônio Total', val: fmt(ctx.Gustavo.investimentos.total + ctx.Larissa.investimentos.total), color: 'var(--purple)' },
                   ].map(({ label, val, color }) => (
                     <div key={label} className="flex items-center justify-between">
@@ -496,11 +497,28 @@ export default function IAChat() {
 
           {/* JSON completo */}
           <Card>
-            <CardTitle>JSON Completo</CardTitle>
-            <pre className="text-xs overflow-x-auto overflow-y-auto"
-              style={{ color: 'var(--text3)', fontFamily: "'DM Mono', monospace", whiteSpace: 'pre-wrap', maxHeight: 'min(240px, 40vh)', lineHeight: 1.6 }}>
-              {JSON.stringify(ctx, null, 2)}
-            </pre>
+            <button
+              onClick={() => setJsonOpen((v) => !v)}
+              className="w-full flex items-center justify-between bg-transparent border-0 cursor-pointer p-0"
+            >
+              <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--text3)' }}>
+                JSON Completo
+              </span>
+              {jsonOpen
+                ? <ChevronUp size={13} style={{ color: 'var(--text3)' }} />
+                : <ChevronDown size={13} style={{ color: 'var(--text3)' }} />}
+            </button>
+
+            {jsonOpen && (
+              <>
+                <div className="flex flex-col gap-3 mt-4">
+                  <pre className="text-xs overflow-x-auto overflow-y-auto"
+                    style={{ color: 'var(--text3)', fontFamily: "'DM Mono', monospace", whiteSpace: 'pre-wrap', maxHeight: 'min(240px, 40vh)', lineHeight: 1.6 }}>
+                    {JSON.stringify(ctx, null, 2)}
+                  </pre>                  
+                </div>
+              </>
+            )}
           </Card>
         </div>
       </div>

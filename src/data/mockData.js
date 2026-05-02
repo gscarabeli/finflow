@@ -22,8 +22,8 @@ export const MOCK_DATA = {
   ela: {
     nome: 'Larissa',
     contas: [
-      { id: 'c4', nome: 'Picpay', tipo: 'Conta Corrente + Cartão de Crédito', saldo: 0.00 },
-      { id: 'c5', nome: 'Santander', tipo: 'Cartão de Crédito', saldo: 0.00 }
+      { id: 'c6', nome: 'Picpay', tipo: 'Conta Corrente + Cartão de Crédito', saldo: 0.00 },
+      { id: 'c7', nome: 'Santander', tipo: 'Cartão de Crédito', saldo: 0.00 }
     ],
     investimentos: {
       reserva: { atual: 7500, meta: 20000 },

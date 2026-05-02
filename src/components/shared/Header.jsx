@@ -5,7 +5,7 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'investimentos', label: 'Investimentos' },
   { id: 'sonhos', label: 'Sonhos', onlyCasal: true },
-  { id: 'ia', label: 'Consultoria IA' },
+  { id: 'ia', label: 'Consultoria IA', onlyCasal: true },
 ]
 
 const PROFILES = [
