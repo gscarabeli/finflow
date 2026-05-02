@@ -87,6 +87,7 @@ export default function Login() {
   const { login, themeByProfile, setProfile } = useStore()
   const [step, setStep] = useState('login') // 'login' or 'profile'
   const [selected, setSelected] = useState('eu')
+  const [identifier, setIdentifier] = useState('') // email ou usuário
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -100,21 +101,24 @@ export default function Login() {
   }, [selected, themeByProfile])
 
   const handleLogin = async () => {
+    if (!identifier.trim()) {
+      setError('Insira seu usuário ou e-mail')
+      return
+    }
     if (!password) {
       setError('Insira uma senha para continuar')
       return
     }
-    
+
     setLoading(true)
     setError('')
-    
+
     try {
-      // Login sem perfil específico - apenas valida a senha
       const success = await login(null, password)
       if (success) {
         setStep('profile')
       } else {
-        setError('Senha incorreta. Tente novamente.')
+        setError('Usuário ou senha incorretos. Tente novamente.')
         setPassword('')
       }
     } catch (err) {
@@ -130,10 +134,15 @@ export default function Login() {
   }
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !loading) {
-      handleLogin()
-    }
+    if (e.key === 'Enter' && !loading) handleLogin()
   }
+
+  const inputStyle = (hasError) => ({
+    background: 'var(--bg3)',
+    borderColor: hasError ? 'var(--red)' : 'var(--border)',
+    color: 'var(--text)',
+    fontFamily: "'Sora', sans-serif",
+  })
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10"
@@ -145,15 +154,28 @@ export default function Login() {
               fin<span style={{ color: 'var(--blue)' }}>.</span>flow
             </div>
             <p className="text-sm mt-2" style={{ color: 'var(--text3)' }}>
-              {step === 'login' 
+              {step === 'login'
                 ? 'Acesse suas finanças de qualquer lugar com segurança.'
-                : 'Escolha qual perfil deseja acessar'
-              }
+                : 'Escolha qual perfil deseja acessar'}
             </p>
           </div>
 
           {step === 'login' ? (
             <>
+              <div className="text-xs uppercase tracking-[0.25em] mb-3" style={{ color: 'var(--text3)' }}>
+                Usuário ou e-mail
+              </div>
+              <input
+                type="text"
+                placeholder="seu@email.com ou usuário"
+                value={identifier}
+                onChange={(e) => { setIdentifier(e.target.value); setError('') }}
+                onKeyPress={handleKeyPress}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors mb-3"
+                style={inputStyle(error && !identifier)}
+                autoComplete="username"
+              />
+
               <div className="text-xs uppercase tracking-[0.25em] mb-3" style={{ color: 'var(--text3)' }}>
                 Senha de acesso
               </div>
@@ -161,50 +183,40 @@ export default function Login() {
                 type="password"
                 placeholder="Digite sua senha"
                 value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value)
-                  setError('')
-                }}
+                onChange={(e) => { setPassword(e.target.value); setError('') }}
                 onKeyPress={handleKeyPress}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-colors mb-3"
-                style={{ background: 'var(--bg3)', borderColor: error ? 'var(--red)' : 'var(--border)', color: 'var(--text)', fontFamily: "'Sora', sans-serif" }}
+                style={inputStyle(error && !password)}
+                autoComplete="current-password"
               />
+
               {error && (
-                <div className="text-xs mb-3 p-2 rounded bg-red-500 bg-opacity-10" style={{ color: 'var(--red)' }}>
+                <div className="text-xs mb-3 p-2 rounded" style={{ background: 'var(--red-bg)', color: 'var(--red)' }}>
                   {error}
                 </div>
               )}
 
-              <Button 
-                onClick={handleLogin} 
-                disabled={loading}
-                className="w-full"
-                style={{ opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
-              >
-                {loading ? 'Processando...' : 'Continuar'}
+              <Button onClick={handleLogin} disabled={loading} className="w-full">
+                {loading ? 'Processando...' : 'Continuar →'}
               </Button>
             </>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-1 mb-6">
+              <div className="grid grid-cols-1 gap-3 mb-6">
                 {ACCOUNTS.map((account) => (
                   <button
                     key={account.id}
                     type="button"
                     onClick={() => handleProfileSelect(account.id)}
                     className="rounded-3xl border p-4 text-left transition-all duration-150 hover:scale-105"
-                    style={{
-                      background: 'var(--bg2)',
-                      borderColor: 'var(--border)',
-                      color: 'var(--text)',
-                    }}
+                    style={{ background: 'var(--bg2)', borderColor: 'var(--border)', color: 'var(--text)' }}
                     onMouseEnter={(e) => {
-                      e.target.style.borderColor = 'var(--blue)'
-                      e.target.style.background = 'var(--bg4)'
+                      e.currentTarget.style.borderColor = 'var(--blue)'
+                      e.currentTarget.style.background = 'var(--bg4)'
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.borderColor = 'var(--border)'
-                      e.target.style.background = 'var(--bg2)'
+                      e.currentTarget.style.borderColor = 'var(--border)'
+                      e.currentTarget.style.background = 'var(--bg2)'
                     }}
                   >
                     <div className="text-sm font-semibold">{account.label}</div>
@@ -212,18 +224,13 @@ export default function Login() {
                   </button>
                 ))}
               </div>
-
-              <Button 
-                onClick={() => setStep('login')}
-                variant="ghost"
-                className="w-full"
-              >
+              <Button onClick={() => setStep('login')} variant="ghost" className="w-full">
                 ← Voltar
               </Button>
             </>
           )}
-          
-          <div className="text-xs mt-4 p-3 rounded-lg border" 
+
+          <div className="text-xs mt-4 p-3 rounded-lg border"
             style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text3)' }}>
             <strong style={{ color: 'var(--red)' }}>🔒 AVISO CRÍTICO:</strong>
             <ul className="mt-2 space-y-1 list-disc list-inside">

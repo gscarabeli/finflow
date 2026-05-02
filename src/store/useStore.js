@@ -66,32 +66,26 @@ export const useStore = create((set, get) => ({
   themeByProfile: loadLS(STORAGE_KEYS.THEME, { eu: 'default', ela: 'larissa', casal: 'casal' }, true),
 
   setProfile: async (profile) => {
-    // Se já temos dados carregados para este perfil, apenas muda
-    if (get().profiles[profile] && get().profiles[profile].transacoes) {
+    // Para o casal, sempre recarrega pois precisa dos dois perfis
+    if (profile !== 'casal' && get().profiles[profile]?.transacoes) {
       set({ profile })
       saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
       return
     }
 
-    // Caso contrário, carrega os dados
     try {
       const appData = await apiLoadProfileData(profile)
       const sonhos = await apiLoadSonhos()
 
       const profiles = { ...get().profiles }
       if (profile === 'casal') {
-        profiles.eu = appData.eu
-        profiles.ela = appData.ela
+        profiles.eu = appData.eu ?? { ...EMPTY_PROFILE, nome: 'Gustavo' }
+        profiles.ela = appData.ela ?? { ...EMPTY_PROFILE, nome: 'Larissa' }
       } else {
-        profiles[profile] = appData[profile]
+        profiles[profile] = appData[profile] ?? EMPTY_PROFILE
       }
 
-      set({
-        profile,
-        authProfile: profile,
-        profiles,
-        sonhos,
-      })
+      set({ profile, authProfile: profile, profiles, sonhos })
       saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
     } catch (error) {
       console.error('Erro ao carregar dados do perfil:', error)
@@ -218,29 +212,32 @@ export const useStore = create((set, get) => ({
   getActiveData: () => {
     const { profile, profiles } = get()
     if (profile === 'casal') {
-      const e = profiles.eu
-      const a = profiles.ela
+      const e = profiles.eu ?? EMPTY_PROFILE
+      const a = profiles.ela ?? EMPTY_PROFILE
+      // Garante que transacoes existem antes de mapear
+      const eTx = Array.isArray(e.transacoes) ? e.transacoes : []
+      const aTx = Array.isArray(a.transacoes) ? a.transacoes : []
       const allTx = [
-        ...e.transacoes.map((t) => ({ ...t, perfil: 'Gustavo' })),
-        ...a.transacoes.map((t) => ({ ...t, perfil: 'Larissa' })),
+        ...eTx.map((t) => ({ ...t, perfil: 'Gustavo' })),
+        ...aTx.map((t) => ({ ...t, perfil: 'Larissa' })),
       ].sort((x, y) => new Date(y.data) - new Date(x.data))
       return {
         nome: 'Visão do Casal',
-        contas: [...e.contas, ...a.contas],
+        contas: [...(e.contas ?? []), ...(a.contas ?? [])],
         investimentos: {
           reserva: {
-            atual: e.investimentos.reserva.atual + a.investimentos.reserva.atual,
-            meta: e.investimentos.reserva.meta + a.investimentos.reserva.meta,
+            atual: (e.investimentos?.reserva?.atual ?? 0) + (a.investimentos?.reserva?.atual ?? 0),
+            meta: (e.investimentos?.reserva?.meta ?? 0) + (a.investimentos?.reserva?.meta ?? 0),
           },
-          previdencia: e.investimentos.previdencia + a.investimentos.previdencia,
-          acoes: e.investimentos.acoes + a.investimentos.acoes,
-          fundos: e.investimentos.fundos + a.investimentos.fundos,
-          cdi: e.investimentos.cdi + a.investimentos.cdi,
+          previdencia: (e.investimentos?.previdencia ?? 0) + (a.investimentos?.previdencia ?? 0),
+          acoes: (e.investimentos?.acoes ?? 0) + (a.investimentos?.acoes ?? 0),
+          fundos: (e.investimentos?.fundos ?? 0) + (a.investimentos?.fundos ?? 0),
+          cdi: (e.investimentos?.cdi ?? 0) + (a.investimentos?.cdi ?? 0),
         },
         transacoes: allTx,
       }
     }
-    return profiles[profile]
+    return profiles[profile] ?? EMPTY_PROFILE
   },
 
   addTransaction: async (tx) => {
