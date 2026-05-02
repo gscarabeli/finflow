@@ -31,12 +31,11 @@ function ContaModal({ open, onClose, conta }) {
 
   return (
     <Modal open={open} onClose={onClose} title={conta ? 'Editar Conta' : 'Nova Conta'}>
-      <Input label="Nome da Conta" placeholder="Ex: Conta Corrente, VR, Cartão de Crédito" value={form.nome} onChange={(e) => set('nome', e.target.value)} />
+      <Input label="Nome da Conta" placeholder="Ex: Sntander, Picpay, Alelo" value={form.nome} onChange={(e) => set('nome', e.target.value)} />
       <Select label="Tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)}>
         <option value="conta-corrente">Conta Corrente</option>
-        <option value="conta-poupanca">Conta Poupança</option>
+        <option value="conta-investimento">Conta Investimento</option>
         <option value="vale-refeicao">Vale Refeição (VR)</option>
-        <option value="vale-alimentacao">Vale Alimentação (VA)</option>
         <option value="cartao-credito">Cartão de Crédito</option>
         <option value="outros">Outros</option>
       </Select>
@@ -54,6 +53,7 @@ export default function Contas() {
   const [showModal, setShowModal] = useState(false)
   const [editingConta, setEditingConta] = useState(null)
   const pd = getActiveData()
+  const isCasal = profile === 'casal'
 
   const getIcon = (tipo) => {
     if (tipo.includes('cartao')) return <CreditCard size={16} />
@@ -63,9 +63,8 @@ export default function Contas() {
   const getTipoLabel = (tipo) => {
     const labels = {
       'conta-corrente': 'Conta Corrente',
-      'conta-poupanca': 'Conta Poupança',
+      'conta-investimento': 'Conta Investimento',
       'vale-refeicao': 'Vale Refeição',
-      'vale-alimentacao': 'Vale Alimentação',
       'cartao-credito': 'Cartão de Crédito',
       'outros': 'Outros'
     }
@@ -81,18 +80,26 @@ export default function Contas() {
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Gerencie seus saldos e contas</p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
-          <span className="flex items-center gap-1.5"><Plus size={14} /> Nova Conta</span>
-        </Button>
+        {!isCasal && (
+          <Button onClick={() => setShowModal(true)}>
+            <span className="flex items-center gap-1.5"><Plus size={14} /> Nova Conta</span>
+          </Button>
+        )}
       </div>
 
       {pd.contas.length === 0 ? (
         <Card>
           <div className="text-center py-12">
             <Wallet size={48} className="mx-auto mb-4" style={{ color: 'var(--text3)' }} />
-            <div className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>Nenhuma conta cadastrada</div>
-            <div className="text-xs mb-4" style={{ color: 'var(--text3)' }}>Adicione suas contas e cartões para acompanhar os saldos</div>
-            <Button onClick={() => setShowModal(true)}>Criar Primeira Conta</Button>
+            <div className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>
+              {isCasal ? 'Nenhuma conta cadastrada' : 'Nenhuma conta cadastrada'}
+            </div>
+            <div className="text-xs mb-4" style={{ color: 'var(--text3)' }}>
+              {isCasal ? 'Visualize as contas dos perfis individuais' : 'Adicione suas contas e cartões para acompanhar os saldos'}
+            </div>
+            {!isCasal && (
+              <Button onClick={() => setShowModal(true)}>Criar Primeira Conta</Button>
+            )}
           </div>
         </Card>
       ) : (
@@ -110,27 +117,31 @@ export default function Contas() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button
-                    onClick={() => {
-                      setEditingConta(conta)
-                      setShowModal(true)
-                    }}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{ color: 'var(--text3)', background: 'transparent' }}
-                    onMouseEnter={(e) => e.target.style.background = 'var(--bg3)'}
-                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => deleteConta(conta.id)}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{ color: 'var(--red)', background: 'transparent' }}
-                    onMouseEnter={(e) => e.target.style.background = 'var(--red-bg)'}
-                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {!isCasal && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setEditingConta(conta)
+                          setShowModal(true)
+                        }}
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{ color: 'var(--text3)', background: 'transparent' }}
+                        onMouseEnter={(e) => e.target.style.background = 'var(--bg3)'}
+                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => deleteConta(conta.id)}
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{ color: 'var(--red)', background: 'transparent' }}
+                        onMouseEnter={(e) => e.target.style.background = 'var(--red-bg)'}
+                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="text-lg font-semibold font-mono" style={{

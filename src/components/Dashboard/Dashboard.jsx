@@ -1,25 +1,72 @@
 import React, { useState, useMemo } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Edit2 } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { CAT_COLORS, CAT_ICONS, CATEGORIAS } from '../../data/mockData.js'
 import { fmt, fmtShort, fmtDate } from '../../hooks/useUtils.js'
 import { Card, CardTitle, StatCard, Badge, Modal, Input, Select, Button, ProgressBar } from '../shared/UI.jsx'
 
-function AddTxModal({ open, onClose }) {
-  const { addTransaction } = useStore()
-  const [form, setForm] = useState({ desc: '', valor: '', tipo: 'saida', cat: 'Alimentação', data: new Date().toISOString().split('T')[0] })
+function AddTxModal({ open, onClose, editingTx }) {
+  const { addTransaction, updateTransaction } = useStore()
+  const isEdit = !!editingTx
+  const [form, setForm] = useState(
+    editingTx ? {
+      desc: editingTx.desc,
+      valor: editingTx.valor.toString(),
+      tipo: editingTx.tipo,
+      cat: editingTx.cat,
+      data: editingTx.data
+    } : {
+      desc: '',
+      valor: '',
+      tipo: 'saida',
+      cat: 'Alimentação',
+      data: new Date().toISOString().split('T')[0]
+    }
+  )
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  React.useEffect(() => {
+    if (editingTx) {
+      setForm({
+        desc: editingTx.desc,
+        valor: editingTx.valor.toString(),
+        tipo: editingTx.tipo,
+        cat: editingTx.cat,
+        data: editingTx.data
+      })
+    } else {
+      setForm({
+        desc: '',
+        valor: '',
+        tipo: 'saida',
+        cat: 'Alimentação',
+        data: new Date().toISOString().split('T')[0]
+      })
+    }
+  }, [editingTx])
 
   const submit = () => {
     if (!form.desc || !form.valor) return
-    addTransaction({ ...form, valor: parseFloat(form.valor) })
-    setForm({ desc: '', valor: '', tipo: 'saida', cat: 'Alimentação', data: new Date().toISOString().split('T')[0] })
+    const tx = { ...form, valor: parseFloat(form.valor) }
+    if (isEdit) {
+      updateTransaction(editingTx.id, tx)
+    } else {
+      addTransaction(tx)
+    }
+    setForm({
+      desc: '',
+      valor: '',
+      tipo: 'saida',
+      cat: 'Alimentação',
+      data: new Date().toISOString().split('T')[0]
+    })
+    setEditingTx && setEditingTx(null)
     onClose()
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nova Transação">
+    <Modal open={open} onClose={onClose} title={isEdit ? "Editar Transação" : "Nova Transação"}>
       <Input label="Descrição" placeholder="Ex: Supermercado" value={form.desc} onChange={(e) => set('desc', e.target.value)} />
       <Input label="Valor (R$)" type="number" placeholder="0,00" step="0.01" value={form.valor} onChange={(e) => set('valor', e.target.value)} />
       <Input label="Data" type="date" value={form.data} onChange={(e) => set('data', e.target.value)} />
@@ -31,7 +78,7 @@ function AddTxModal({ open, onClose }) {
         {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
       </Select>
       <div className="flex gap-2 mt-2">
-        <Button onClick={submit}>Adicionar</Button>
+        <Button onClick={submit}>{isEdit ? "Salvar" : "Adicionar"}</Button>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
       </div>
     </Modal>
@@ -49,9 +96,11 @@ const CustomTooltip = ({ active, payload }) => {
 }
 
 export default function Dashboard() {
-  const { getActiveData, deleteTransaction, profile } = useStore()
+  const { getActiveData, deleteTransaction, updateTransaction, profile } = useStore()
   const [showModal, setShowModal] = useState(false)
+  const [editingTx, setEditingTx] = useState(null)
   const pd = getActiveData()
+  const isCasal = profile === 'casal'
 
   const { entradas, saidas, saldo, catData, saldoContas, saldoVR, nonVrCount } = useMemo(() => {
     const txs = pd.transacoes
@@ -78,9 +127,11 @@ export default function Dashboard() {
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Abril 2026 · Dados em tempo real</p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
-          <span className="flex items-center gap-1.5"><Plus size={14} /> Nova Transação</span>
-        </Button>
+        {!isCasal && (
+          <Button onClick={() => setShowModal(true)}>
+            <span className="flex items-center gap-1.5"><Plus size={14} /> Nova Transação</span>
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -99,7 +150,7 @@ export default function Dashboard() {
               <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Saldo VR (Alelo)</div>
               <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>Valor extra reservado para alimentação, não entra no saldo principal.</div>
             </div>
-            <div className="text-lg font-semibold font-mono" style={{ color: 'var(--cyan)' }}>{fmt(saldoVR)}</div>
+            <div className="text-lg font-semibold" style={{ color: 'var(--cyan)' }}>{fmt(saldoVR)}</div>
           </div>
         </div>
       )}
@@ -126,17 +177,27 @@ export default function Dashboard() {
                     </div>
                     <div className="text-xs" style={{ color: 'var(--text3)' }}>{tx.cat}</div>
                   </div>
-                  <div className={`text-sm font-semibold font-mono ${tx.tipo === 'entrada' ? 'text-green-400' : 'text-red-400'}`}
+                  <div className={`text-sm font-semibold ${tx.tipo === 'entrada' ? 'text-green-400' : 'text-red-400'}`}
                     style={{ color: tx.tipo === 'entrada' ? 'var(--green)' : 'var(--red)' }}>
                     {tx.tipo === 'entrada' ? '+' : '-'}{fmt(tx.valor)}
                   </div>
                   <div className="text-xs w-10 text-right" style={{ color: 'var(--text3)' }}>{fmtDate(tx.data)}</div>
                   {profile !== 'casal' && (
-                    <button onClick={() => deleteTransaction(tx.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity border-0 bg-transparent cursor-pointer p-1 rounded"
-                      style={{ color: 'var(--text3)' }}>
-                      <Trash2 size={13} />
-                    </button>
+                    <div className="flex gap-1">
+                      <button onClick={() => {
+                        setEditingTx(tx)
+                        setShowModal(true)
+                      }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity border-0 bg-transparent cursor-pointer p-1 rounded"
+                        style={{ color: 'var(--text3)' }}>
+                        <Edit2 size={13} />
+                      </button>
+                      <button onClick={() => deleteTransaction(tx.id)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity border-0 bg-transparent cursor-pointer p-1 rounded"
+                        style={{ color: 'var(--text3)' }}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -157,7 +218,7 @@ export default function Dashboard() {
                     <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>{c.nome}</div>
                     <div className="text-xs" style={{ color: 'var(--text3)' }}>{c.tipo}</div>
                   </div>
-                  <div className="text-sm font-semibold font-mono"
+                  <div className="text-sm font-semibold"
                     style={{ color: c.saldo >= 0 ? 'var(--green)' : 'var(--red)' }}>
                     {fmt(c.saldo)}
                   </div>
@@ -176,7 +237,7 @@ export default function Dashboard() {
                   <div className="flex-1" style={{ height: 5, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
                     <div style={{ width: `${Math.round(value / maxCat * 100)}%`, height: '100%', background: CAT_COLORS[name] || '#9aa0b8', borderRadius: 3 }} />
                   </div>
-                  <div className="text-xs font-mono w-14 text-right" style={{ color: 'var(--text3)' }}>{fmtShort(value)}</div>
+                  <div className="text-xs w-14 text-right" style={{ color: 'var(--text3)' }}>{fmtShort(value)}</div>
                 </div>
               ))}
             </div>
@@ -203,7 +264,7 @@ export default function Dashboard() {
               <div key={name} className="flex items-center gap-2 text-xs min-w-[120px]">
                 <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: CAT_COLORS[name] || '#9aa0b8' }} />
                 <span style={{ color: 'var(--text2)' }}>{name}</span>
-                <span className="font-mono" style={{ color: 'var(--text3)' }}>{Math.round(value / saidas * 100)}%</span>
+                <span style={{ color: 'var(--text3)' }}>{Math.round(value / saidas * 100)}%</span>
               </div>
             ))}
           </div>
@@ -225,7 +286,10 @@ export default function Dashboard() {
         </div>
       </Card>
 
-      <AddTxModal open={showModal} onClose={() => setShowModal(false)} />
+      <AddTxModal open={showModal} onClose={() => {
+        setShowModal(false)
+        setEditingTx(null)
+      }} editingTx={editingTx} />
     </div>
   )
 }

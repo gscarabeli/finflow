@@ -27,7 +27,7 @@ export function StatCard({ label, value, sub, color = 'var(--text)', dot }) {
         {dot && <span className="w-2 h-2 rounded-full" style={{ background: dot }} />}
         <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'var(--text3)' }}>{label}</span>
       </div>
-      <div className="text-2xl font-semibold tracking-tight" style={{ color, fontFamily: "'Sora', sans-serif" }}>{value}</div>
+      <div className="text-2xl font-semibold tracking-tight" style={{ color }}>{value}</div>
       {sub && <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>{sub}</div>}
     </div>
   )
@@ -61,7 +61,7 @@ export function ProgressBar({ pct, color = 'var(--blue)', height = 6 }) {
 }
 
 export function Button({ children, onClick, variant = 'primary', size = 'md', disabled = false, className = '' }) {
-  const base = 'font-semibold rounded-xl cursor-pointer transition-all duration-150 border-0 font-["Sora"] disabled:opacity-40 disabled:cursor-not-allowed'
+  const base = 'font-semibold rounded-xl cursor-pointer transition-all duration-150 border-0 disabled:opacity-40 disabled:cursor-not-allowed'
   const sizes = { sm: 'text-xs px-3 py-1.5', md: 'text-sm px-4 py-2.5', lg: 'text-sm px-5 py-3' }
   const variants = {
     primary: 'text-white',

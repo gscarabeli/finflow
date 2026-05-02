@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { Edit2 } from 'lucide-react'
+import { Edit2, Plus } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { fmt } from '../../hooks/useUtils.js'
-import { Card, CardTitle, StatCard, Badge, ProgressBar, Modal, Input, Button } from '../shared/UI.jsx'
+import { Card, CardTitle, StatCard, Badge, ProgressBar, Modal, Input, Select, Button } from '../shared/UI.jsx'
 
 const ASSET_CONFIG = [
   { key: 'cdi', label: 'CDB / CDI', color: '#3b82f6', desc: 'Renda fixa' },
@@ -43,6 +43,51 @@ function EditMetaModal({ open, onClose, currentMeta, onSave }) {
   )
 }
 
+function InvestimentoModal({ open, onClose, onSave }) {
+  const { getActiveData } = useStore()
+  const pd = getActiveData()
+  const [form, setForm] = useState({ tipo: 'cdi', operacao: 'adicionar', valor: '' })
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const submit = () => {
+    const valor = parseFloat(form.valor)
+    if (isNaN(valor) || valor <= 0) return
+
+    const currentValue = pd.investimentos[form.tipo] || 0
+    const newValue = form.operacao === 'adicionar' ? currentValue + valor : Math.max(0, currentValue - valor)
+
+    onSave({ [form.tipo]: newValue })
+    setForm({ tipo: 'cdi', operacao: 'adicionar', valor: '' })
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nova Transação de Investimento">
+      <Select label="Tipo de Investimento" value={form.tipo} onChange={(e) => set('tipo', e.target.value)}>
+        {ASSET_CONFIG.map((asset) => (
+          <option key={asset.key} value={asset.key}>{asset.label}</option>
+        ))}
+      </Select>
+      <Select label="Operação" value={form.operacao} onChange={(e) => set('operacao', e.target.value)}>
+        <option value="adicionar">Adicionar</option>
+        <option value="retirar">Retirar</option>
+      </Select>
+      <Input
+        label="Valor (R$)"
+        type="number"
+        placeholder="0,00"
+        step="0.01"
+        value={form.valor}
+        onChange={(e) => set('valor', e.target.value)}
+      />
+      <div className="flex gap-2 mt-2">
+        <Button onClick={submit}>Confirmar</Button>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+      </div>
+    </Modal>
+  )
+}
+
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null
   return (
@@ -56,6 +101,7 @@ const CustomTooltip = ({ active, payload }) => {
 export default function Investimentos() {
   const { getActiveData, updateInvestimentos, profile } = useStore()
   const [showMetaModal, setShowMetaModal] = useState(false)
+  const [showInvestimentoModal, setShowInvestimentoModal] = useState(false)
   const pd = getActiveData()
   const inv = pd.investimentos
 
@@ -71,13 +117,26 @@ export default function Investimentos() {
     updateInvestimentos({ reserva: { ...inv.reserva, meta: newMeta } })
   }
 
+  const handleInvestimentoTransaction = (updates) => {
+    updateInvestimentos(updates)
+  }
+
+  const isCasal = profile === 'casal'
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
-          Investimentos · {profile === 'casal' ? 'Visão Consolidada' : pd.nome}
-        </h1>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Patrimônio e metas de investimento</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+            Investimentos · {profile === 'casal' ? 'Visão Consolidada' : pd.nome}
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Patrimônio e metas de investimento</p>
+        </div>
+        {!isCasal && (
+          <Button onClick={() => setShowInvestimentoModal(true)}>
+            <span className="flex items-center gap-1.5"><Plus size={14} /> Nova Transação</span>
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -93,16 +152,18 @@ export default function Investimentos() {
           <CardTitle right={
             <div className="flex items-center gap-2">
               <Badge color={reservaPct >= 80 ? 'green' : reservaPct >= 50 ? 'amber' : 'red'}>{reservaPct}%</Badge>
-              <button
-                onClick={() => setShowMetaModal(true)}
-                className="p-1 rounded-lg transition-colors"
-                style={{ color: 'var(--text3)', background: 'transparent' }}
-                onMouseEnter={(e) => e.target.style.background = 'var(--bg3)'}
-                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                title="Editar meta"
-              >
-                <Edit2 size={14} />
-              </button>
+              {!isCasal && (
+                <button
+                  onClick={() => setShowMetaModal(true)}
+                  className="p-1 rounded-lg transition-colors"
+                  style={{ color: 'var(--text3)', background: 'transparent' }}
+                  onMouseEnter={(e) => e.target.style.background = 'var(--bg3)'}
+                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                  title="Editar meta"
+                >
+                  <Edit2 size={14} />
+                </button>
+              )}
             </div>
           }>Reserva de Emergência</CardTitle>
 
@@ -190,6 +251,12 @@ export default function Investimentos() {
         onClose={() => setShowMetaModal(false)}
         currentMeta={inv.reserva.meta}
         onSave={handleUpdateMeta}
+      />
+
+      <InvestimentoModal
+        open={showInvestimentoModal}
+        onClose={() => setShowInvestimentoModal(false)}
+        onSave={handleInvestimentoTransaction}
       />
     </div>
   )
