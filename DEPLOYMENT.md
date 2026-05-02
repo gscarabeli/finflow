@@ -68,15 +68,32 @@ Gere um secret forte:
 - Use https://www.uuidgenerator.net/ (versão 4)
 - Ou gere via terminal: `openssl rand -hex 32`
 
-### 3. Teste Local em Produção
+### 4. Problemas Comuns no Deploy
 
-Antes de hospedar, teste localmente:
+#### ❌ Erro: "No matching version found for @types/react-dom@^18.3.12"
+**Sintomas:** Build falha com erro de versão não encontrada
+**Solução:** Use versões específicas que existem:
+```json
+"@types/react-dom": "^18.3.3"
+```
+Versões @types nem sempre seguem exatamente as versões do React.
 
-```bash
-NODE_ENV=production npm start
+#### ❌ Erro: "vite: not found"
+**Sintomas:** Build falha porque Vite não está disponível
+**Solução:** Mova dependências de build para `dependencies`:
+```json
+"dependencies": {
+  "vite": "^5.4.11",
+  "@vitejs/plugin-react": "^4.3.3",
+  "tailwindcss": "^3.4.15",
+  "autoprefixer": "^10.4.20",
+  "postcss": "^8.4.49"
+}
 ```
 
-Acesse http://localhost:4000
+#### ❌ Erro: "sh: 1: [command]: not found"
+**Sintomas:** Comandos não encontrados no ambiente Linux do Render
+**Solução:** Use apenas `npm` scripts, não comandos globais
 
 ### 4. Backup de Dados
 
