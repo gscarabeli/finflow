@@ -31,6 +31,11 @@ export const CAT_COLORS = {
   'Alimentação': '#3b82f6',
   'Transporte': '#a78bfa',
   'Moradia': '#f59e0b',
+  'Vestuário': '#ec4899',
+  'Beleza': '#f43f5e',
+  'Cuidados Pessoais': '#10b981',
+  'Assinaturas': '#8b5cf6',
+  'Serviços': '#f97316',
   'Saúde': '#22c55e',
   'Lazer': '#ef4444',
   'Educação': '#06b6d4',
@@ -56,4 +61,4 @@ export const CAT_ICONS = {
   'Outros': '📌',
 }
 
-export const CATEGORIAS = ['Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Lazer', 'Educação', 'Salário', 'Freelance', 'Outros']
+export const CATEGORIAS = ['Alimentação', 'Transporte', 'Moradia', 'Vestuário', 'Beleza', 'Cuidados Pessoais', 'Assinaturas', 'Serviços', 'Saúde', 'Lazer', 'Educação', 'Salário', 'Freelance', 'Outros']
