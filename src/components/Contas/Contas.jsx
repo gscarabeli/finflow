@@ -6,11 +6,19 @@ import { Card, CardTitle, Modal, Input, Select, Button } from '../shared/UI.jsx'
 
 function ContaModal({ open, onClose, conta }) {
   const { addConta, updateConta } = useStore()
-  const [form, setForm] = useState(conta || { nome: '', tipo: 'conta-corrente', saldo: '' })
+  const [form, setForm] = useState({ nome: '', tipo: 'conta-corrente', saldo: '' })
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
+  React.useEffect(() => {
+    if (conta) {
+      setForm({ nome: conta.nome, tipo: conta.tipo, saldo: String(conta.saldo) })
+    } else {
+      setForm({ nome: '', tipo: 'conta-corrente', saldo: '' })
+    }
+  }, [conta])
+
   const submit = () => {
-    if (!form.nome || !form.saldo) return
+    if (!form.nome || form.saldo === '') return
     const data = { ...form, saldo: parseFloat(form.saldo) }
     if (conta) {
       updateConta(conta.id, data)

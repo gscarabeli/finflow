@@ -15,6 +15,10 @@ const ASSET_CONFIG = [
 function EditMetaModal({ open, onClose, currentMeta, onSave }) {
   const [meta, setMeta] = useState(currentMeta.toString())
 
+  React.useEffect(() => {
+    setMeta(currentMeta.toString())
+  }, [currentMeta])
+
   const submit = () => {
     const newMeta = parseFloat(meta)
     if (isNaN(newMeta) || newMeta < 0) return
@@ -57,7 +61,7 @@ export default function Investimentos() {
 
   const totalInv = ASSET_CONFIG.reduce((s, a) => s + (inv[a.key] || 0), 0)
   const patrimônioTotal = totalInv + inv.reserva.atual
-  const reservaPct = Math.round((inv.reserva.atual / inv.reserva.meta) * 100)
+  const reservaPct = inv.reserva.meta ? Math.round((inv.reserva.atual / inv.reserva.meta) * 100) : 0
 
   const pieData = ASSET_CONFIG.map((a) => ({ name: a.label, value: inv[a.key] || 0, color: a.color }))
 

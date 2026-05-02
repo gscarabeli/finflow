@@ -48,6 +48,10 @@
     font-family: 'Sora', system-ui, sans-serif;
   }
 
+  code, pre, .font-mono {
+    font-family: 'Sora', system-ui, sans-serif !important;
+  }
+
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: var(--bg2); }
   ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }

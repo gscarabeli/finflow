@@ -4,6 +4,7 @@ import { logSecurityWarnings } from './hooks/useSecurity.js'
 import Header from './components/shared/Header.jsx'
 import Login from './components/Login/Login.jsx'
 import Dashboard from './components/Dashboard/Dashboard.jsx'
+import Contas from './components/Contas/Contas.jsx'
 import Investimentos from './components/Investimentos/Investimentos.jsx'
 import Sonhos from './components/Sonhos/Sonhos.jsx'
 import IAChat from './components/IAChat/IAChat.jsx'
@@ -115,6 +116,7 @@ export default function App() {
       <Header />
       <main>
         {tab === 'dashboard' && <Dashboard />}
+        {tab === 'contas' && <Contas />}
         {tab === 'investimentos' && <Investimentos />}
         {tab === 'sonhos' && <Sonhos />}
         {tab === 'ia' && <IAChat />}
