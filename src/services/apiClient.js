@@ -104,6 +104,12 @@ export async function apiUpdateSonho(id, fields) {
   })
 }
 
+export async function apiDeleteSonho(id) {
+  return apiFetch(`/sonhos/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function apiLoadContas() {
   return apiFetch('/contas')
 }
