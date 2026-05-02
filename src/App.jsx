@@ -1,11 +1,16 @@
 import React, { useEffect } from 'react'
 import { useStore } from './store/useStore.js'
+import { logSecurityWarnings } from './hooks/useSecurity.js'
 import Header from './components/shared/Header.jsx'
 import Login from './components/Login/Login.jsx'
 import Dashboard from './components/Dashboard/Dashboard.jsx'
 import Investimentos from './components/Investimentos/Investimentos.jsx'
 import Sonhos from './components/Sonhos/Sonhos.jsx'
 import IAChat from './components/IAChat/IAChat.jsx'
+
+if (typeof window !== 'undefined') {
+  logSecurityWarnings()
+}
 
 const THEME_VARIANTS = {
   default: {
@@ -83,7 +88,11 @@ const THEME_VARIANTS = {
 }
 
 export default function App() {
-  const { tab, profile, themeByProfile, authenticated } = useStore()
+  const { tab, profile, themeByProfile, authenticated, initialized, initialize } = useStore()
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
 
   useEffect(() => {
     const theme = themeByProfile[profile] || 'default'
@@ -92,6 +101,10 @@ export default function App() {
       document.documentElement.style.setProperty(key, value)
     })
   }, [profile, themeByProfile])
+
+  if (!initialized) {
+    return null
+  }
 
   if (!authenticated) {
     return <Login />

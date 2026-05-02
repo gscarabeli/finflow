@@ -1,6 +1,6 @@
 # 💰 FinFlow — Gestão Financeira Pessoal
 
-Sistema web de gestão financeira pessoal, privado e local. Todos os dados ficam no seu navegador (localStorage). Nenhum dado é enviado para servidores externos.
+Sistema local com backend Node e frontend React. Os dados são mantidos no servidor local (`server/state.json`) e também em `sessionStorage` no navegador. A IA usa o Google Gemini apenas quando ativada.
 
 ---
 
@@ -48,8 +48,16 @@ Aguarde o download (pode levar 1–2 minutos na primeira vez).
 
 ---
 
-### 4. Inicie o sistema
+### 4. Inicie o backend e o frontend
 
+Abra dois terminais separados.
+
+No primeiro terminal, inicie o backend:
+```bash
+npm run start:server
+```
+
+No segundo terminal, inicie o frontend:
 ```bash
 npm run dev
 ```
@@ -68,7 +76,7 @@ Você verá algo assim no terminal:
 
 Abra: **http://localhost:5173**
 
-O sistema já inicia com dados fictícios (mock data) para você ver tudo funcionando imediatamente. ✅
+O sistema inicia com dados zerados para você criar as contas, transações e sonhos a partir do primeiro login.
 
 ---
 
@@ -182,22 +190,19 @@ finflow/
 
 ## 🤖 Configurar a IA
 
-1. Acesse: https://console.cloud.google.com/
-2. Crie um projeto no Google Cloud e habilite a API Generative AI
-3. Vá em **APIs e serviços** → **Credenciais** → **Criar credenciais** → **Chave de API**
-4. Copie a chave gerada
-5. No FinFlow, vá na aba **Consultoria IA**
-6. Cole a chave no campo amarelo e clique **Salvar**
+A chave do Google AI Studio está pré-configurada no backend. Para trocar a chave, edite o valor de `DEFAULT_GEMINI_API_KEY` em `server/index.js`.
 
-A chave fica salva no localStorage do navegador e não é compartilhada com ninguém.
+Se quiser usar uma variável de ambiente em vez do valor fixo no código, defina `GEMINI_API_KEY` no servidor.
+
+A IA só é chamada quando você usa a aba **Consultoria IA**, e as solicitações são proxyadas pelo backend local.
 
 ---
 
 ## 💾 Dados e Privacidade
 
-- **100% local:** todos os dados ficam no `localStorage` do navegador
-- **Sem servidor:** o sistema não faz nenhuma requisição externa (exceto para a API da Google quando você usa a IA)
-- **Autenticação local:** uso de senha com encoding básico (não criptografado — veja seção de segurança)
+- **Local:** os dados financeiros são mantidos no backend local em `server/state.json` e dados sensíveis de sessão também em `sessionStorage` do navegador
+- **IA:** a única requisição externa é para a API do Google Gemini quando você usa a consultoria IA
+- **Autenticação local:** uso de senha com hash PBKDF2 no backend
 - **Para exportar seus dados:** abra o console do navegador (F12) → Console → `localStorage`
 
 ---
@@ -319,6 +324,8 @@ Para começar do zero (apagar todos os dados e senha salvos):
 5. Recarregue a página (F5)
 6. Acesse novamente — você poderá definir uma nova senha
 
+> Importante: como o backend usa `server/state.json`, se quiser resetar o servidor também, restaure esse arquivo ao estado inicial vazio ou delete-o e reinicie o backend.
+
 Ou, via console (F12 → Console):
 ```javascript
 // Limpar tudo
@@ -351,20 +358,39 @@ Object.keys(localStorage).forEach(k => {
 
 ---
 
-## 📤 Deploy Automático (GitHub Pages)
+## 📤 Deploy
 
-Para facilitar o deploy, use o script npm incluído:
+### GitHub Pages
+O GitHub Pages só funciona para frontend estático. Como o FinFlow agora depende de um backend Node para autenticação e IA, o deploy completo não pode ser feito apenas com GitHub Pages.
 
+### Deploy completo (Node + Frontend)
+Use um serviço que suporte Node.js, como Render, Railway ou Fly.io.
+
+#### Passos gerais
+1. Faça o build do frontend:
 ```bash
-npm run deploy
+npm install
+npm run build
 ```
+2. Suba o código para um repositório Git
+3. No serviço de hospedagem, configure o comando de start:
+```bash
+npm run start:server
+```
+4. Defina a variável de ambiente opcional `NODE_ENV=production`
+5. Se quiser manter a chave da IA fora do código, defina também `GEMINI_API_KEY`
 
-Este script:
-1. Faz build da aplicação
-2. Push para a branch `gh-pages` do seu repositório
-3. GitHub Pages detecta automaticamente e publica
+#### Exemplo rápido no Render
+- Crie uma conta em https://render.com
+- Conecte seu repositório Git
+- Crie um serviço Web
+- Build command: `npm install && npm run build`
+- Start command: `npm run start:server`
+- Defina `NODE_ENV=production`
+- (Opcional) defina `GEMINI_API_KEY` no painel
 
-**Pré-requisito:** você precisa ter um repositório Git configurado com remote `origin`.
+### Quando usar GitHub Pages
+Se precisar apenas de preview estático sem callbacks de IA e sem autenticação backend, a página estática pode ser publicada lá. Caso contrário, use um host Node.
 
 ---
 

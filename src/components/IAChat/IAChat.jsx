@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import { useStore } from '../../store/useStore.js'
 import { fmt } from '../../hooks/useUtils.js'
 import { Card, CardTitle, Badge } from '../shared/UI.jsx'
+import { apiLoadGeminiResponse } from '../../services/apiClient.js'
 
 // — Modelo Gemini em uso —
 const GEMINI_MODEL = 'gemini-2.5-flash'
@@ -178,15 +179,13 @@ function ConfigOptions({ label, value, options, onChange }) {
 }
 
 export default function IAChat() {
-  const { apiKey, setApiKey, buildFinancialContext } = useStore()
+  const { buildFinancialContext } = useStore()
   const [messages, setMessages] = useState([{
     role: 'assistant',
-    content: 'Olá! 👋 Sou seu conselheiro financeiro pessoal.\n\nAnalisei seus dados financeiros e estou pronto para ajudar com dicas de otimização de gastos, estratégias de investimento e análise da saúde financeira do mês.\n\nInsira sua API Key do Google AI Studio acima e pode me perguntar o que quiser!',
+    content: 'Olá! 👋 Sou seu conselheiro financeiro pessoal.\n\nAnalisei seus dados financeiros e estou pronto para ajudar com dicas de otimização de gastos, estratégias de investimento e análise da saúde financeira do mês.\n\nA chave da IA está pré-configurada no backend e não é necessário inserir nada aqui.',
   }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [keyInput, setKeyInput] = useState(apiKey)
-  const [keySaved, setKeySaved] = useState(!!apiKey)
   const [config, setConfig] = useState(DEFAULT_CONFIG)
   const [configOpen, setConfigOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(true)
@@ -199,11 +198,6 @@ export default function IAChat() {
 
   const updateConfig = (key, value) => setConfig((prev) => ({ ...prev, [key]: value }))
 
-  const saveKey = () => {
-    setApiKey(keyInput.trim())
-    setKeySaved(true)
-  }
-
   const sendMessage = async (text) => {
     const msg = text || input.trim()
     if (!msg || loading) return
@@ -211,46 +205,19 @@ export default function IAChat() {
     setMessages((prev) => [...prev, { role: 'user', content: msg }])
     setLoading(true)
 
-    if (!apiKey || apiKey.length < 10) {
-      setTimeout(() => {
-        setMessages((prev) => [...prev, {
-          role: 'assistant',
-          content: '⚠️ Insira sua chave da API do Google AI Studio para ativar a IA. Você pode obter uma gratuitamente em aistudio.google.com',
-        }])
-        setLoading(false)
-      }, 500)
-      return
-    }
-
     const ctx = buildFinancialContext()
     const systemPrompt = buildSystemPrompt(ctx, config)
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: msg }] }],
-            generationConfig: {
-              temperature: config.temperature,
-              maxOutputTokens: config.maxTokens,
-            },
-          }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (data.error) {
-        setMessages((prev) => [...prev, {
-          role: 'assistant',
-          content: `⚠️ Erro da API: ${data.error.message}\n\nVerifique se sua chave do Google AI Studio está correta.`,
-        }])
-        return
-      }
+      const data = await apiLoadGeminiResponse({
+        model: GEMINI_MODEL,
+        prompt: {
+          systemPrompt,
+          userPrompt: msg,
+        },
+        maxTokens: config.maxTokens,
+        temperature: config.temperature,
+      })
 
       const assistantText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
       setMessages((prev) => [...prev, {
@@ -260,7 +227,7 @@ export default function IAChat() {
     } catch (err) {
       setMessages((prev) => [...prev, {
         role: 'assistant',
-        content: `⚠️ Erro de conexão: ${err.message}`,
+        content: `⚠️ Erro da IA: ${err.message}`,
       }])
     } finally {
       setLoading(false)
@@ -281,40 +248,16 @@ export default function IAChat() {
         {/* ── Coluna principal: API Key + Chat ── */}
         <div className="lg:col-span-2 flex flex-col gap-4">
 
-          {/* API Key */}
-          <div className="rounded-2xl border p-4"
-            style={{ background: keySaved && apiKey ? 'var(--green-bg)' : 'var(--amber-bg)', borderColor: keySaved && apiKey ? 'var(--green)' : 'var(--amber)' }}>
+          <div className="rounded-2xl border p-4" style={{ background: 'var(--bg3)', borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2 mb-2.5">
-              <Key size={13} style={{ color: keySaved && apiKey ? 'var(--green)' : 'var(--amber)' }} />
-              <span className="text-xs font-semibold tracking-widest"
-                style={{ color: keySaved && apiKey ? 'var(--green)' : 'var(--amber)' }}>
-                {keySaved && apiKey ? 'API KEY CONFIGURADA' : 'CONFIGURAR API KEY'}
+              <Key size={13} style={{ color: 'var(--blue)' }} />
+              <span className="text-xs font-semibold tracking-widest" style={{ color: 'var(--text3)' }}>
+                Chave da IA definida no backend
               </span>
             </div>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={keyInput}
-                onChange={(e) => { setKeyInput(e.target.value); setKeySaved(false) }}
-                placeholder="Chave da API do Google AI Studio (AIza...)"
-                onKeyDown={(e) => e.key === 'Enter' && saveKey()}
-                className="flex-1 rounded-xl border px-3 py-2 text-xs outline-none font-mono min-w-0"
-                style={{ background: 'var(--bg2)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
-              <button onClick={saveKey}
-                className="px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer border-0 flex-shrink-0"
-                style={{ background: keySaved && apiKey ? 'var(--green)' : 'var(--amber)', color: keySaved && apiKey ? '#fff' : '#1a0f00' }}>
-                {keySaved && apiKey ? '✓ Salvo' : 'Salvar'}
-              </button>
-            </div>
-            {!apiKey && (
-              <div className="text-xs mt-2" style={{ color: 'var(--amber)' }}>
-                Obtenha sua chave gratuita em{' '}
-                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline">
-                  aistudio.google.com/apikey
-                </a>
-              </div>
-            )}
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>
+              A chave do Google AI Studio está configurada no servidor local. Se quiser trocar, altere o valor de <code style={{ background: 'var(--bg4)', padding: '0.15rem 0.35rem', borderRadius: '0.35rem' }}>DEFAULT_GEMINI_API_KEY</code> em <code style={{ background: 'var(--bg4)', padding: '0.15rem 0.35rem', borderRadius: '0.35rem' }}>server/index.js</code>.
+            </p>
           </div>
 
           {/* Chat */}

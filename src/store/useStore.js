@@ -1,77 +1,165 @@
 import { create } from 'zustand'
-import { MOCK_DATA, MOCK_SONHOS } from '../data/mockData.js'
+import {
+  sanitizeInput,
+  RateLimiter,
+  loadSecurely,
+  saveSecurely,
+  clearSensitiveData,
+  STORAGE_KEYS,
+} from '../hooks/useSecurity.js'
+import {
+  apiLogin,
+  apiValidate,
+  apiLoadProfileData,
+  apiLoadSonhos,
+  apiCreateTransaction,
+  apiDeleteTransaction,
+  apiUpdateInvestimentos,
+  apiCreateSonho,
+  apiUpdateSonho,
+  apiDeleteSonho,
+} from '../services/apiClient.js'
 
-function loadLS(key, fallback) {
-  try {
-    const val = localStorage.getItem(key)
-    return val ? JSON.parse(val) : fallback
-  } catch {
-    return fallback
-  }
+const loginLimiter = new RateLimiter(5, 15 * 60 * 1000)
+
+function loadLS(key, fallback, persistent = false) {
+  return loadSecurely(key, fallback, persistent)
 }
 
-function saveLS(key, val) {
-  localStorage.setItem(key, JSON.stringify(val))
+function saveLS(key, val, persistent = false) {
+  saveSecurely(key, val, persistent)
+}
+
+const EMPTY_PROFILE = {
+  nome: '',
+  contas: [],
+  investimentos: {
+    reserva: { atual: 0, meta: 0 },
+    previdencia: 0,
+    acoes: 0,
+    fundos: 0,
+    cdi: 0,
+  },
+  transacoes: [],
 }
 
 export const useStore = create((set, get) => ({
-  // --- Perfil ativo
-  profile: 'eu', // 'eu' | 'ela' | 'casal'
+  profile: 'eu',
   tab: 'dashboard',
+  initialized: false,
 
-  // --- Dados por perfil
   profiles: {
-    eu: loadLS('finflow_eu', MOCK_DATA.eu),
-    ela: loadLS('finflow_ela', MOCK_DATA.ela),
+    eu: { ...EMPTY_PROFILE, nome: 'Gustavo' },
+    ela: { ...EMPTY_PROFILE, nome: 'Larissa' },
   },
 
-  // --- Sonhos (compartilhado pelo casal)
-  sonhos: loadLS('finflow_sonhos', MOCK_SONHOS),
+  sonhos: [],
 
-  // --- API Key IA
-  apiKey: loadLS('finflow_apikey', ''),
-  authenticated: loadLS('finflow_auth', false),
-  authProfile: loadLS('finflow_auth_profile', 'eu'),
-  themeByProfile: loadLS('finflow_theme', { eu: 'default', ela: 'larissa', casal: 'casal' }),
-  passwordHash: loadLS('finflow_pwd_hash', null),
+  authToken: loadLS(STORAGE_KEYS.AUTH_TOKEN, null, false),
+  authenticated: Boolean(loadLS(STORAGE_KEYS.AUTH_TOKEN, null, false)),
+  authProfile: loadLS(STORAGE_KEYS.AUTH_PROFILE, 'eu', false),
+  themeByProfile: loadLS(STORAGE_KEYS.THEME, { eu: 'default', ela: 'larissa', casal: 'casal' }, true),
 
-  // --- Actions
   setProfile: (profile) => set({ profile }),
   setTab: (tab) => set({ tab }),
-  login: (profile, password) => {
-    const { passwordHash } = get()
-    // Validação simples: se não há hash armazenado, usar a primeira senha como padrão
-    if (!passwordHash) {
-      const hash = btoa(password) // encoding simples (NÃO é seguro para produção)
-      saveLS('finflow_pwd_hash', hash)
-      saveLS('finflow_auth', true)
-      saveLS('finflow_auth_profile', profile)
-      set({ authenticated: true, authProfile: profile, profile, passwordHash: hash })
-      return true
+
+  initialize: async () => {
+    const token = loadLS(STORAGE_KEYS.AUTH_TOKEN, null, false)
+    if (!token) {
+      set({ initialized: true })
+      return
     }
-    // Se há hash, validar a senha
-    const inputHash = btoa(password)
-    if (inputHash === passwordHash) {
-      saveLS('finflow_auth', true)
-      saveLS('finflow_auth_profile', profile)
-      set({ authenticated: true, authProfile: profile, profile })
-      return true
+
+    try {
+      const me = await apiValidate()
+      const profile = me.profile
+      const appData = await apiLoadProfileData(profile)
+      const sonhos = await apiLoadSonhos()
+
+      const profiles = { ...get().profiles }
+      if (profile === 'casal') {
+        profiles.eu = appData.eu
+        profiles.ela = appData.ela
+      } else {
+        profiles[profile] = appData[profile]
+      }
+
+      set({
+        authenticated: true,
+        authToken: token,
+        authProfile: profile,
+        profile,
+        profiles,
+        sonhos,
+      })
+    } catch {
+      clearSensitiveData()
+      set({ authenticated: false, authToken: null, profile: 'eu' })
+    } finally {
+      set({ initialized: true })
     }
-    return false
   },
+
+  login: async (profile, password) => {
+    const limit = loginLimiter.checkLimit(profile)
+    if (!limit.allowed) {
+      const minutes = Math.ceil(limit.resetIn / 60000)
+      throw new Error(`Muitas tentativas de login. Tente novamente em ${minutes} minuto(s).`)
+    }
+
+    const sanitizedPassword = sanitizeInput(password)
+    if (sanitizedPassword !== password) {
+      throw new Error('Entrada contém caracteres inválidos')
+    }
+
+    const response = await apiLogin(profile, password)
+    const { token } = response
+    saveLS(STORAGE_KEYS.AUTH_TOKEN, token, false)
+    saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
+
+    const appData = await apiLoadProfileData(profile)
+    const sonhos = await apiLoadSonhos()
+
+    const profiles = { ...get().profiles }
+    if (profile === 'casal') {
+      profiles.eu = appData.eu
+      profiles.ela = appData.ela
+    } else {
+      profiles[profile] = appData[profile]
+    }
+
+    set({
+      authenticated: true,
+      authToken: token,
+      authProfile: profile,
+      profile,
+      profiles,
+      sonhos,
+    })
+
+    loginLimiter.reset(profile)
+    return true
+  },
+
   logout: () => {
-    saveLS('finflow_auth', false)
-    set({ authenticated: false, profile: 'eu' })
+    clearSensitiveData()
+    set({
+      authenticated: false,
+      authToken: null,
+      profile: 'eu',
+      profiles: {
+        eu: { ...EMPTY_PROFILE, nome: 'Gustavo' },
+        ela: { ...EMPTY_PROFILE, nome: 'Larissa' },
+      },
+      sonhos: [],
+    })
   },
+
   setTheme: (theme) => {
     const { profile, themeByProfile } = get()
     const updated = { ...themeByProfile, [profile]: theme }
-    saveLS('finflow_theme', updated)
+    saveLS(STORAGE_KEYS.THEME, updated, true)
     set({ themeByProfile: updated })
-  },
-  setApiKey: (apiKey) => {
-    saveLS('finflow_apikey', apiKey)
-    set({ apiKey })
   },
 
   getActiveData: () => {
@@ -102,23 +190,26 @@ export const useStore = create((set, get) => ({
     return profiles[profile]
   },
 
-  addTransaction: (tx) => {
+  addTransaction: async (tx) => {
     const { profile, profiles } = get()
     const target = profile === 'casal' ? 'eu' : profile
+    const transaction = await apiCreateTransaction(tx)
     const updated = {
       ...profiles,
       [target]: {
         ...profiles[target],
-        transacoes: [{ ...tx, id: 't' + Date.now() }, ...profiles[target].transacoes],
+        transacoes: [transaction, ...profiles[target].transacoes],
       },
     }
-    saveLS('finflow_' + target, updated[target])
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
     set({ profiles: updated })
   },
 
-  deleteTransaction: (id) => {
+  deleteTransaction: async (id) => {
     const { profile, profiles } = get()
     const target = profile === 'casal' ? 'eu' : profile
+    await apiDeleteTransaction(id)
     const updated = {
       ...profiles,
       [target]: {
@@ -126,40 +217,45 @@ export const useStore = create((set, get) => ({
         transacoes: profiles[target].transacoes.filter((t) => t.id !== id),
       },
     }
-    saveLS('finflow_' + target, updated[target])
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
     set({ profiles: updated })
   },
 
-  updateInvestimentos: (inv) => {
+  updateInvestimentos: async (inv) => {
     const { profile, profiles } = get()
     const target = profile === 'casal' ? 'eu' : profile
+    const investimentos = await apiUpdateInvestimentos(inv)
     const updated = {
       ...profiles,
-      [target]: { ...profiles[target], investimentos: inv },
+      [target]: { ...profiles[target], investimentos },
     }
-    saveLS('finflow_' + target, updated[target])
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
     set({ profiles: updated })
   },
 
-  // --- Sonhos
-  addSonho: (sonho) => {
+  addSonho: async (sonho) => {
+    const created = await apiCreateSonho(sonho)
     const { sonhos } = get()
-    const updated = [...sonhos, { ...sonho, id: 's' + Date.now() }]
-    saveLS('finflow_sonhos', updated)
+    const updated = [...sonhos, created]
+    saveLS(STORAGE_KEYS.SONHOS, updated, false)
     set({ sonhos: updated })
   },
 
-  updateSonho: (id, fields) => {
+  updateSonho: async (id, fields) => {
+    const updatedSonho = await apiUpdateSonho(id, fields)
     const { sonhos } = get()
-    const updated = sonhos.map((s) => (s.id === id ? { ...s, ...fields } : s))
-    saveLS('finflow_sonhos', updated)
+    const updated = sonhos.map((s) => (s.id === id ? updatedSonho : s))
+    saveLS(STORAGE_KEYS.SONHOS, updated, false)
     set({ sonhos: updated })
   },
 
-  deleteSonho: (id) => {
+  deleteSonho: async (id) => {
+    await apiDeleteSonho(id)
     const { sonhos } = get()
     const updated = sonhos.filter((s) => s.id !== id)
-    saveLS('finflow_sonhos', updated)
+    saveLS(STORAGE_KEYS.SONHOS, updated, false)
     set({ sonhos: updated })
   },
 

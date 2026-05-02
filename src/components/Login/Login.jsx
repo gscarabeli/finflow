@@ -88,6 +88,7 @@ export default function Login() {
   const [selected, setSelected] = useState('eu')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const theme = themeByProfile[selected] || 'default'
@@ -97,20 +98,31 @@ export default function Login() {
     })
   }, [selected, themeByProfile])
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!password) {
       setError('Insira uma senha para continuar')
       return
     }
-    const success = login(selected, password)
-    if (!success) {
-      setError('Senha incorreta. Tente novamente.')
+    
+    setLoading(true)
+    setError('')
+    
+    try {
+      const success = await login(selected, password)
+      if (!success) {
+        setError('Senha incorreta. Tente novamente.')
+        setPassword('')
+      }
+    } catch (err) {
+      setError(err.message || 'Erro ao fazer login')
       setPassword('')
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !loading) {
       handleLogin()
     }
   }
@@ -167,13 +179,31 @@ export default function Login() {
             style={{ background: 'var(--bg3)', borderColor: error ? 'var(--red)' : 'var(--border)', color: 'var(--text)', fontFamily: "'Sora', sans-serif" }}
           />
           {error && (
-            <div className="text-xs mb-3" style={{ color: 'var(--red)' }}>{error}</div>
+            <div className="text-xs mb-3 p-2 rounded bg-red-500 bg-opacity-10" style={{ color: 'var(--red)' }}>
+              {error}
+            </div>
           )}
 
-          <Button onClick={handleLogin} className="w-full">Entrar como {ACCOUNTS.find((a) => a.id === selected).label}</Button>
+          <Button 
+            onClick={handleLogin} 
+            disabled={loading}
+            className="w-full"
+            style={{ opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
+          >
+            {loading ? 'Processando...' : `Entrar como ${ACCOUNTS.find((a) => a.id === selected).label}`}
+          </Button>
           
-          <div className="text-xs mt-4 p-3 rounded-lg" style={{ background: 'var(--bg3)', color: 'var(--text3)' }}>
-            <strong style={{ color: 'var(--text2)' }}>⚠️ Segurança:</strong> A senha é armazenada localmente. Não utilize senhas sensíveis. Para dados reais, use um backend seguro.
+          <div className="text-xs mt-4 p-3 rounded-lg border" 
+            style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text3)' }}>
+            <strong style={{ color: 'var(--red)' }}>🔒 AVISO CRÍTICO:</strong>
+            <ul className="mt-2 space-y-1 list-disc list-inside">
+              <li>Dados em <strong>sessionStorage</strong> (expiram ao fechar aba)</li>
+              <li>Senha hasheada com <strong>PBKDF2</strong> (100k iterações)</li>
+              <li>Rate limiting: <strong>5 tentativas</strong> a cada 15 min</li>
+              <li>❌ Sem encriptação de repouso</li>
+              <li>❌ Sem backend seguro</li>
+              <li>⚠️ Veja SECURITY_AUDIT.md para detalhes</li>
+            </ul>
           </div>
         </Card>
       </div>
