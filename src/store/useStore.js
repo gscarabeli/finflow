@@ -14,10 +14,15 @@ import {
   apiLoadSonhos,
   apiCreateTransaction,
   apiDeleteTransaction,
+  apiUpdateTransaction,
   apiUpdateInvestimentos,
   apiCreateSonho,
   apiUpdateSonho,
   apiDeleteSonho,
+  apiLoadContas,
+  apiCreateConta,
+  apiUpdateConta,
+  apiDeleteConta,
 } from '../services/apiClient.js'
 
 const loginLimiter = new RateLimiter(5, 15 * 60 * 1000)
@@ -215,6 +220,70 @@ export const useStore = create((set, get) => ({
       [target]: {
         ...profiles[target],
         transacoes: profiles[target].transacoes.filter((t) => t.id !== id),
+      },
+    }
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
+    set({ profiles: updated })
+  },
+
+  updateTransaction: async (id, tx) => {
+    const { profile, profiles } = get()
+    const target = profile === 'casal' ? 'eu' : profile
+    const transaction = await apiUpdateTransaction(id, tx)
+    const updated = {
+      ...profiles,
+      [target]: {
+        ...profiles[target],
+        transacoes: profiles[target].transacoes.map((t) => (t.id === id ? transaction : t)),
+      },
+    }
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
+    set({ profiles: updated })
+  },
+
+  addConta: async (conta) => {
+    const { profile, profiles } = get()
+    const target = profile === 'casal' ? 'eu' : profile
+    const created = await apiCreateConta(conta)
+    const updated = {
+      ...profiles,
+      [target]: {
+        ...profiles[target],
+        contas: [...profiles[target].contas, created],
+      },
+    }
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
+    set({ profiles: updated })
+  },
+
+  updateConta: async (id, conta) => {
+    const { profile, profiles } = get()
+    const target = profile === 'casal' ? 'eu' : profile
+    const updatedConta = await apiUpdateConta(id, conta)
+    const updated = {
+      ...profiles,
+      [target]: {
+        ...profiles[target],
+        contas: profiles[target].contas.map((c) => (c.id === id ? updatedConta : c)),
+      },
+    }
+    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
+    saveLS(key, updated[target], false)
+    set({ profiles: updated })
+  },
+
+  deleteConta: async (id) => {
+    const { profile, profiles } = get()
+    const target = profile === 'casal' ? 'eu' : profile
+    await apiDeleteConta(id)
+    const updated = {
+      ...profiles,
+      [target]: {
+        ...profiles[target],
+        contas: profiles[target].contas.filter((c) => c.id !== id),
       },
     }
     const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA

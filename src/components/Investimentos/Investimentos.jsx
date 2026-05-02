@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { Edit2 } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { fmt } from '../../hooks/useUtils.js'
-import { Card, CardTitle, StatCard, Badge, ProgressBar } from '../shared/UI.jsx'
+import { Card, CardTitle, StatCard, Badge, ProgressBar, Modal, Input, Button } from '../shared/UI.jsx'
 
 const ASSET_CONFIG = [
   { key: 'cdi', label: 'CDB / CDI', color: '#3b82f6', desc: 'Renda fixa' },
@@ -10,6 +11,33 @@ const ASSET_CONFIG = [
   { key: 'previdencia', label: 'Previdência', color: '#22c55e', desc: 'PGBL / VGBL' },
   { key: 'acoes', label: 'Ações', color: '#f59e0b', desc: 'Renda variável' },
 ]
+
+function EditMetaModal({ open, onClose, currentMeta, onSave }) {
+  const [meta, setMeta] = useState(currentMeta.toString())
+
+  const submit = () => {
+    const newMeta = parseFloat(meta)
+    if (isNaN(newMeta) || newMeta < 0) return
+    onSave(newMeta)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Editar Meta de Reserva">
+      <Input
+        label="Meta de Reserva (R$)"
+        type="number"
+        placeholder="Ex: 10000"
+        value={meta}
+        onChange={(e) => setMeta(e.target.value)}
+      />
+      <div className="flex gap-2 mt-2">
+        <Button onClick={submit}>Salvar</Button>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+      </div>
+    </Modal>
+  )
+}
 
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null
@@ -22,7 +50,8 @@ const CustomTooltip = ({ active, payload }) => {
 }
 
 export default function Investimentos() {
-  const { getActiveData, profile } = useStore()
+  const { getActiveData, updateInvestimentos, profile } = useStore()
+  const [showMetaModal, setShowMetaModal] = useState(false)
   const pd = getActiveData()
   const inv = pd.investimentos
 
@@ -33,6 +62,10 @@ export default function Investimentos() {
   const pieData = ASSET_CONFIG.map((a) => ({ name: a.label, value: inv[a.key] || 0, color: a.color }))
 
   const reservaColor = reservaPct >= 80 ? 'var(--green)' : reservaPct >= 50 ? 'var(--amber)' : 'var(--red)'
+
+  const handleUpdateMeta = (newMeta) => {
+    updateInvestimentos({ reserva: { ...inv.reserva, meta: newMeta } })
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -54,7 +87,19 @@ export default function Investimentos() {
         {/* Reserva Card */}
         <Card>
           <CardTitle right={
-            <Badge color={reservaPct >= 80 ? 'green' : reservaPct >= 50 ? 'amber' : 'red'}>{reservaPct}%</Badge>
+            <div className="flex items-center gap-2">
+              <Badge color={reservaPct >= 80 ? 'green' : reservaPct >= 50 ? 'amber' : 'red'}>{reservaPct}%</Badge>
+              <button
+                onClick={() => setShowMetaModal(true)}
+                className="p-1 rounded-lg transition-colors"
+                style={{ color: 'var(--text3)', background: 'transparent' }}
+                onMouseEnter={(e) => e.target.style.background = 'var(--bg3)'}
+                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                title="Editar meta"
+              >
+                <Edit2 size={14} />
+              </button>
+            </div>
           }>Reserva de Emergência</CardTitle>
 
           <div className="flex justify-between text-xs mb-2" style={{ color: 'var(--text3)' }}>
@@ -135,6 +180,13 @@ export default function Investimentos() {
           </div>
         </Card>
       </div>
+
+      <EditMetaModal
+        open={showMetaModal}
+        onClose={() => setShowMetaModal(false)}
+        currentMeta={inv.reserva.meta}
+        onSave={handleUpdateMeta}
+      />
     </div>
   )
 }

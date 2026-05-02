@@ -76,6 +76,13 @@ export async function apiDeleteTransaction(id) {
   })
 }
 
+export async function apiUpdateTransaction(id, transaction) {
+  return apiFetch(`/transactions/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(transaction),
+  })
+}
+
 export async function apiUpdateInvestimentos(investimentos) {
   return apiFetch('/investimentos', {
     method: 'PUT',
@@ -97,8 +104,26 @@ export async function apiUpdateSonho(id, fields) {
   })
 }
 
-export async function apiDeleteSonho(id) {
-  return apiFetch(`/sonhos/${encodeURIComponent(id)}`, {
+export async function apiLoadContas() {
+  return apiFetch('/contas')
+}
+
+export async function apiCreateConta(conta) {
+  return apiFetch('/contas', {
+    method: 'POST',
+    body: JSON.stringify(conta),
+  })
+}
+
+export async function apiUpdateConta(id, conta) {
+  return apiFetch(`/contas/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(conta),
+  })
+}
+
+export async function apiDeleteConta(id) {
+  return apiFetch(`/contas/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

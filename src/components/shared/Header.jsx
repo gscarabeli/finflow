@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore.js'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'contas', label: 'Contas' },
   { id: 'investimentos', label: 'Investimentos' },
   { id: 'sonhos', label: 'Sonhos', onlyCasal: true },
   { id: 'ia', label: 'Consultoria IA', onlyCasal: true },
