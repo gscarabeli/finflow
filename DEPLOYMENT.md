@@ -1,149 +1,106 @@
-# 🚀 Hospedagem do FinFlow
+# Deploy do FinFlow
 
-## ⚠️ AVISO IMPORTANTE DE SEGURANÇA
+O FinFlow é um monorepo: o mesmo servidor Express serve a API e os arquivos estáticos do React em produção.
 
-**NÃO use dados financeiros reais nesta versão hospedada.** Os dados são armazenados sem encriptação forte e podem ser comprometidos. Use apenas para teste e planejamento.
+---
 
-## Opções de Hospedagem
+## Render.com (recomendado)
 
-### 1. Render.com (Recomendado - Fácil)
+### 1. Suba o código para o GitHub
 
-#### Passos:
-1. Crie conta em https://render.com
-2. Conecte seu repositório Git
-3. Crie um **Web Service**
-4. Configure:
-   - **Runtime:** Node
-   - **Build Command:** `npm install && npm run build`
-   - **Start Command:** `npm start`
-5. Adicione variáveis de ambiente:
-   - `JWT_SECRET`: uma string aleatória forte (gere em https://www.uuidgenerator.net/)
-   - `GEMINI_API_KEY`: sua chave do Google AI Studio
-   - `NODE_ENV`: `production`
-
-#### Exemplo de configuração no Render:
-```
-Build Command: npm install && npm run build
-Start Command: npm start
-Environment: production
+```bash
+git add .
+git commit -m "deploy"
+git push
 ```
 
-### 2. Railway (Alternativa)
+### 2. Crie um Web Service no Render
+
+- **Runtime:** Node
+- **Build Command:** `npm install && npm run build`
+- **Start Command:** `npm start`
+
+### 3. Configure as variáveis de ambiente
+
+| Variável | Obrigatória | Descrição |
+|---|---|---|
+| `NODE_ENV` | Sim | `production` |
+| `JWT_SECRET` | Sim | String aleatória forte (use `openssl rand -hex 32`) |
+| `APP_URL` | Sim | URL pública do serviço, ex: `https://finflow-xxxx.onrender.com` |
+| `RESEND_API_KEY` | Sim | Chave do Resend para envio de e-mails |
+| `GEMINI_API_KEY` | Sim | Chave do Google AI Studio para a IA |
+| `PORT` | Não | Padrão `4000` |
+| `VITE_TURNSTILE_SITE_KEY` | Não | Site key do Cloudflare Turnstile (anti-bot) |
+| `TURNSTILE_SECRET_KEY` | Não | Secret key do Cloudflare Turnstile |
+
+> **Atenção:** `VITE_TURNSTILE_SITE_KEY` é embutida no bundle React no momento do build. Se adicionar/alterar essa variável, é necessário um novo deploy completo (não apenas reiniciar).
+
+### 4. Acesse
+
+A URL gerada pelo Render já serve tanto a API quanto o frontend.
+
+---
+
+## Outras opções
+
+### Railway
 
 1. Crie conta em https://railway.app
-2. Conecte o repositório
-3. Railway detecta automaticamente Node.js
-4. Configure variáveis de ambiente iguais ao Render
+2. Conecte o repositório — Railway detecta Node.js automaticamente
+3. Configure as mesmas variáveis de ambiente listadas acima
 
-### 3. VPS Próprio (Mais Seguro, Mas Caro)
-
-Para mais controle, use um VPS (DigitalOcean, Linode, etc.):
-- Instale Node.js
-- Clone o repositório
-- Configure Nginx como proxy reverso com HTTPS
-- Use Let's Encrypt para certificado SSL
-
-## Configuração de Produção
-
-### 1. Variáveis de Ambiente
-
-Copie `.env.example` para `.env` e preencha:
+### VPS (DigitalOcean, Linode, etc.)
 
 ```bash
+# Clone o repositório
+git clone https://github.com/seu-usuario/finflow.git
+cd finflow
+
+# Instale dependências e faça o build
+npm install
+npm run build
+
+# Configure variáveis de ambiente
 cp .env.example .env
+# edite .env com os valores reais
+
+# Inicie
+npm start
 ```
 
-Edite `.env`:
-```env
-JWT_SECRET=uma-string-aleatoria-muito-forte-aqui
-GEMINI_API_KEY=sua-chave-do-google-ai-studio
-NODE_ENV=production
-```
+Configure Nginx como proxy reverso e use Let's Encrypt para HTTPS.
 
-### 2. JWT Secret Seguro
+---
 
-**IMPORTANTE:** Nunca use o valor padrão em produção!
+## Variáveis opcionais: Cloudflare Turnstile
 
-Gere um secret forte:
-- Use https://www.uuidgenerator.net/ (versão 4)
-- Ou gere via terminal: `openssl rand -hex 32`
+O Turnstile adiciona verificação anti-bot na tela de login (sem selecionar imagens). Sem as variáveis configuradas, os formulários funcionam normalmente sem verificação.
 
-### 3. Problemas Comuns no Deploy
+Para ativar:
+1. Crie um site em https://dash.cloudflare.com → Turnstile
+2. Configure o domínio permitido (ex: `finflow-xxxx.onrender.com`)
+3. Adicione `VITE_TURNSTILE_SITE_KEY` e `TURNSTILE_SECRET_KEY` no Render
+4. Faça um novo deploy para que o frontend inclua a chave no bundle
 
-#### ❌ Erro: "No matching version found for @types/react-dom@^18.3.12"
-**Sintomas:** Build falha com erro de versão não encontrada
-**Solução:** Use versões específicas que existem:
-```json
-"@types/react-dom": "^18.3.3"
-```
-Versões @types nem sempre seguem exatamente as versões do React.
+---
 
-#### ❌ Erro: "vite: not found"
-**Sintomas:** Build falha porque Vite não está disponível
-**Solução:** Mova dependências de build para `dependencies`:
-```json
-"dependencies": {
-  "vite": "^5.4.11",
-  "@vitejs/plugin-react": "^4.3.3",
-  "tailwindcss": "^3.4.15",
-  "autoprefixer": "^10.4.20",
-  "postcss": "^8.4.49"
-}
-```
+## Persistência de dados
 
-#### ❌ Erro: "sh: 1: [command]: not found"
-**Sintomas:** Comandos não encontrados no ambiente Linux do Render
-**Solução:** Use apenas `npm` scripts, não comandos globais
+Os dados ficam em `server/state.json`. No Render (plano gratuito), o disco é efêmero — os dados são perdidos a cada deploy ou reinicialização.
 
-### 4. Backup de Dados
+Para persistência permanente:
+- Use o plano pago do Render com disco persistente, ou
+- Migre para um banco de dados (PostgreSQL no Render, por exemplo)
 
-Como os dados ficam em `server/state.json`, faça backup regular:
+---
 
-```bash
-# Script simples de backup
-cp server/state.json backup-$(date +%Y%m%d).json
-```
+## Problemas comuns no build
 
-## Segurança Implementada
+**"vite: not found"**
+→ Confirme que `vite` está em `dependencies` (não em `devDependencies`) no `package.json`.
 
-### ✅ Melhorias para Hospedagem
-- HTTPS forçado em produção
-- JWT tokens com expiração de 24h
-- Helmet para headers de segurança
-- CSP (Content Security Policy) básica
-- Rate limiting ativo
+**"No matching version found for @types/react-dom"**
+→ Use `@types/react-dom: "^18.3.3"` em vez de versões que não existem.
 
-### ❌ Limitações Conhecidas
-- Dados não encriptados em repouso
-- Sem 2FA
-- Sem auditoria avançada
-- Dependente da segurança do provedor de hospedagem
-
-## Monitoramento
-
-### Logs
-O Render/Railway mostra logs em tempo real. Monitore por:
-- Tentativas de login suspeitas
-- Erros 401/403
-- Uso excessivo da API
-
-### Backup
-- Exporte dados periodicamente via interface
-- Mantenha backups locais seguros
-
-## Custo Estimado
-
-- **Render:** Gratuito para uso básico, ~$7/mês para sempre online
-- **Railway:** ~$5/mês para hobby
-- **VPS:** ~$5-10/mês dependendo do provedor
-
-## Próximos Passos para Segurança Real
-
-Se quiser usar dados reais, implemente:
-1. Banco de dados (PostgreSQL)
-2. Encriptação de dados
-3. 2FA
-4. Logs de auditoria
-5. Pen testing
-
-Mas isso transforma o projeto em uma aplicação enterprise.
+**VITE_ env var não aparece no frontend após deploy**
+→ Variáveis `VITE_*` são embutidas no build. Adicionar no painel e reiniciar não basta — é preciso um novo build completo.
