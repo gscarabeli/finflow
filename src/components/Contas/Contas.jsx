@@ -1,48 +1,92 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, Edit2, CreditCard, Wallet } from 'lucide-react'
+import { Plus, Trash2, Edit2 } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { fmt } from '../../hooks/useUtils.js'
 import { Card, CardTitle, Modal, Input, Select, Button } from '../shared/UI.jsx'
+import { BANKS, TIPO_LABELS, BankLogo } from '../shared/BankLogo.jsx'
+
+const EMPTY_FORM = { nome: '', banco: null, tipo: 'conta-corrente', saldo: '' }
+
+function fromConta(c) {
+  return { nome: c.nome, banco: c.banco || null, tipo: c.tipo, saldo: String(c.saldo) }
+}
 
 function ContaModal({ open, onClose, conta }) {
   const { addConta, updateConta } = useStore()
-  const [form, setForm] = useState({ nome: '', tipo: 'conta-corrente', saldo: '' })
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const [form, setForm] = useState(EMPTY_FORM)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   React.useEffect(() => {
-    if (conta) {
-      setForm({ nome: conta.nome, tipo: conta.tipo, saldo: String(conta.saldo) })
-    } else {
-      setForm({ nome: '', tipo: 'conta-corrente', saldo: '' })
-    }
-  }, [conta])
+    if (open) setForm(conta ? fromConta(conta) : { ...EMPTY_FORM })
+  }, [open, conta])
+
+  function selectBank(bank) {
+    set('banco', bank.id)
+    if (!form.nome) set('nome', bank.name)
+  }
+
+  function clearBank() {
+    set('banco', null)
+  }
 
   const submit = () => {
     if (!form.nome || form.saldo === '') return
     const data = { ...form, saldo: parseFloat(form.saldo) }
-    if (conta) {
-      updateConta(conta.id, data)
-    } else {
-      addConta(data)
-    }
-    setForm({ nome: '', tipo: 'conta-corrente', saldo: '' })
+    if (conta) updateConta(conta.id, data)
+    else addConta(data)
     onClose()
   }
 
   return (
     <Modal open={open} onClose={onClose} title={conta ? 'Editar Conta' : 'Nova Conta'}>
-      <Input label="Nome da Conta" placeholder="Ex: Santander, Picpay, Alelo" value={form.nome} onChange={(e) => set('nome', e.target.value)} />
-      <Select label="Tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)}>
-        <option value="conta-corrente">Conta Corrente</option>
-        <option value="conta-investimento">Conta Investimento</option>
-        <option value="vale-refeicao">Vale Refeição (VR)</option>
-        <option value="vale-beneficio">Vale Benefício (VB)</option>
-        <option value="cartao-credito">Cartão de Crédito</option>
-        <option value="outros">Outros</option>
+      {/* Bank picker */}
+      <div className="mb-3">
+        <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text3)' }}>
+          Banco <span style={{ fontWeight: 400 }}>(opcional)</span>
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+          {BANKS.map(bank => {
+            const selected = form.banco === bank.id
+            return (
+              <button
+                key={bank.id}
+                type="button"
+                onClick={() => selected ? clearBank() : selectBank(bank)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  gap: 4, padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
+                  background: selected ? bank.color + '18' : 'var(--bg3)',
+                  border: selected ? `1.5px solid ${bank.color}` : '1.5px solid transparent',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'var(--bg4)' }}
+                onMouseLeave={e => { if (!selected) e.currentTarget.style.background = 'var(--bg3)' }}
+              >
+                <BankLogo banco={bank.id} size={30} />
+                <span style={{ fontSize: 10, color: selected ? bank.color : 'var(--text3)', fontWeight: selected ? 700 : 400, lineHeight: 1.1, textAlign: 'center' }}>
+                  {bank.name}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <Input
+        label="Nome da Conta"
+        placeholder="Ex: Santander Corrente, PicPay..."
+        value={form.nome}
+        onChange={e => set('nome', e.target.value)}
+      />
+      <Select label="Tipo" value={form.tipo} onChange={e => set('tipo', e.target.value)}>
+        {Object.entries(TIPO_LABELS).map(([val, label]) => (
+          <option key={val} value={val}>{label}</option>
+        ))}
       </Select>
-      <Input label="Saldo Atual (R$)" type="number" placeholder="0,00" step="0.01" value={form.saldo} onChange={(e) => set('saldo', e.target.value)} />
+      <Input label="Saldo Atual (R$)" type="number" placeholder="0,00" step="0.01" value={form.saldo} onChange={e => set('saldo', e.target.value)} />
+
       <div className="flex gap-2 mt-2">
-        <Button onClick={submit}>{conta ? 'Salvar' : 'Criar'}</Button>
+        <Button onClick={submit} disabled={!form.nome || form.saldo === ''}>{conta ? 'Salvar' : 'Criar'}</Button>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
       </div>
     </Modal>
@@ -50,35 +94,18 @@ function ContaModal({ open, onClose, conta }) {
 }
 
 export default function Contas() {
-  const { getActiveData, deleteConta, profile } = useStore()
+  const { getActiveData, deleteConta, viewMode } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [editingConta, setEditingConta] = useState(null)
   const pd = getActiveData()
-  const isCasal = profile === 'casal'
-
-  const getIcon = (tipo) => {
-    if (tipo.includes('cartao')) return <CreditCard size={16} />
-    return <Wallet size={16} />
-  }
-
-  const getTipoLabel = (tipo) => {
-    const labels = {
-      'Conta Corrente': 'Conta Corrente',
-      'Conta Investimento': 'Conta Investimento',
-      'Vale Refeição': 'Vale Refeição',
-      'Vale Benefício': 'Vale Benefício',
-      'Cartão de Crédito': 'Cartão de Crédito',
-      'Outros': 'Outros'
-    }
-    return labels[tipo] || tipo
-  }
+  const isCasal = viewMode === 'casal'
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
-            Contas e Cartões · {profile === 'casal' ? 'Visão Consolidada' : pd.nome}
+            Contas e Cartões · {isCasal ? 'Visão Consolidada' : pd.nome}
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Gerencie seus saldos e contas</p>
         </div>
@@ -92,16 +119,12 @@ export default function Contas() {
       {pd.contas.length === 0 ? (
         <Card>
           <div className="text-center py-12">
-            <Wallet size={48} className="mx-auto mb-4" style={{ color: 'var(--text3)' }} />
-            <div className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>
-              {isCasal ? 'Nenhuma conta cadastrada' : 'Nenhuma conta cadastrada'}
-            </div>
+            <BankLogo size={48} />
+            <div className="text-sm font-semibold mb-2 mt-4" style={{ color: 'var(--text)' }}>Nenhuma conta cadastrada</div>
             <div className="text-xs mb-4" style={{ color: 'var(--text3)' }}>
               {isCasal ? 'Visualize as contas dos perfis individuais' : 'Adicione suas contas e cartões para acompanhar os saldos'}
             </div>
-            {!isCasal && (
-              <Button onClick={() => setShowModal(true)}>Criar Primeira Conta</Button>
-            )}
+            {!isCasal && <Button onClick={() => setShowModal(true)}>Criar Primeira Conta</Button>}
           </div>
         </Card>
       ) : (
@@ -110,41 +133,36 @@ export default function Contas() {
             <Card key={conta.id}>
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg" style={{ background: 'var(--bg3)', color: 'var(--text)' }}>
-                    {getIcon(conta.tipo)}
-                  </div>
+                  <BankLogo banco={conta.banco} tipo={conta.tipo} size={40} />
                   <div>
                     <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{conta.nome}</div>
-                    <div className="text-xs" style={{ color: 'var(--text3)' }}>{getTipoLabel(conta.tipo)}</div>
+                    <div className="text-xs" style={{ color: 'var(--text3)' }}>
+                      {TIPO_LABELS[conta.tipo] || conta.tipo}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  {!isCasal && (
-                    <>
-                      <button
-                        onClick={() => {
-                          setEditingConta(conta)
-                          setShowModal(true)
-                        }}
-                        className="p-1.5 rounded-lg transition-colors"
-                        style={{ color: 'var(--text3)', background: 'transparent' }}
-                        onMouseEnter={(e) => e.target.style.background = 'var(--bg3)'}
-                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => deleteConta(conta.id)}
-                        className="p-1.5 rounded-lg transition-colors"
-                        style={{ color: 'var(--red)', background: 'transparent' }}
-                        onMouseEnter={(e) => e.target.style.background = 'var(--red-bg)'}
-                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
-                </div>
+                {!isCasal && (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => { setEditingConta(conta); setShowModal(true) }}
+                      className="p-1.5 rounded-lg transition-colors"
+                      style={{ color: 'var(--text3)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => deleteConta(conta.id)}
+                      className="p-1.5 rounded-lg transition-colors"
+                      style={{ color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--red-bg)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="text-lg font-semibold font-mono" style={{
                 color: conta.saldo >= 0 ? 'var(--green)' : 'var(--red)'
@@ -158,10 +176,7 @@ export default function Contas() {
 
       <ContaModal
         open={showModal}
-        onClose={() => {
-          setShowModal(false)
-          setEditingConta(null)
-        }}
+        onClose={() => { setShowModal(false); setEditingConta(null) }}
         conta={editingConta}
       />
     </div>

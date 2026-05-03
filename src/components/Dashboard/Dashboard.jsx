@@ -5,6 +5,7 @@ import { useStore } from '../../store/useStore.js'
 import { CAT_COLORS, CAT_ICONS, CATEGORIAS } from '../../data/mockData.js'
 import { fmt, fmtShort, fmtDate } from '../../hooks/useUtils.js'
 import { Card, CardTitle, StatCard, Badge, Modal, Input, Select, Button, ProgressBar } from '../shared/UI.jsx'
+import { BankLogo, TIPO_LABELS } from '../shared/BankLogo.jsx'
 
 const EMPTY_TX_FORM = {
   desc: '', valor: '', tipo: 'saida', cat: 'Alimentação',
@@ -238,13 +239,14 @@ export default function Dashboard() {
             <CardTitle>Contas & Cartões</CardTitle>
             <div className="flex flex-col gap-0">
               {pd.contas.map((c) => (
-                <div key={c.id} className="flex items-center justify-between py-2.5"
+                <div key={c.id} className="flex items-center gap-2.5 py-2.5"
                   style={{ borderBottom: '1px solid var(--border)' }}>
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>{c.nome}</div>
-                    <div className="text-xs" style={{ color: 'var(--text3)' }}>{c.tipo}</div>
+                  <BankLogo banco={c.banco} tipo={c.tipo} size={30} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{c.nome}</div>
+                    <div className="text-xs" style={{ color: 'var(--text3)' }}>{TIPO_LABELS[c.tipo] || c.tipo}</div>
                   </div>
-                  <div className="text-sm font-semibold"
+                  <div className="text-sm font-semibold flex-shrink-0"
                     style={{ color: c.saldo >= 0 ? 'var(--green)' : 'var(--red)' }}>
                     {fmt(c.saldo)}
                   </div>
