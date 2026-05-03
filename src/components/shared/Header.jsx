@@ -314,21 +314,26 @@ function calcBtnStyle(v) {
   }
 }
 
-function safeEval(expr) {
-  const safe = expr.replace(/×/g, '*').replace(/÷/g, '/')
-  if (!/^[\d\s+\-*/.]+$/.test(safe)) return null
-  try {
-    // eslint-disable-next-line no-new-func
-    const res = Function('"use strict"; return (' + safe + ')')()
-    return Number.isFinite(res) ? parseFloat(res.toFixed(10)).toString() : null
-  } catch { return null }
+function applyCalcOp(a, operator, b) {
+  if (operator === '+') return a + b
+  if (operator === '-') return a - b
+  if (operator === '×') return a * b
+  if (operator === '÷') return b !== 0 ? a / b : NaN
+  return b
+}
+
+function fmtCalc(n) {
+  if (!Number.isFinite(n)) return 'Erro'
+  return parseFloat(n.toFixed(10)).toString()
 }
 
 function CalculatorWidget() {
   const [open, setOpen] = useState(false)
-  const [expr, setExpr] = useState('')
-  const [preview, setPreview] = useState('')
-  const [justEval, setJustEval] = useState(false)
+  // State machine: no eval/Function needed
+  const [display, setDisplay] = useState('0')
+  const [accum, setAccum]     = useState(null)   // accumulated value
+  const [pendingOp, setPendingOp] = useState(null)
+  const [fresh, setFresh]     = useState(false)  // next digit replaces display
   const ref = useRef(null)
 
   useEffect(() => {
@@ -340,36 +345,47 @@ function CalculatorWidget() {
 
   function press(val) {
     if (val === 'C') {
-      setExpr(''); setPreview(''); setJustEval(false)
+      setDisplay('0'); setAccum(null); setPendingOp(null); setFresh(false)
       return
     }
     if (val === '←') {
-      if (justEval) { setExpr(''); setPreview(''); setJustEval(false); return }
-      const next = expr.slice(0, -1)
-      setExpr(next); setPreview(''); setJustEval(false)
+      if (fresh) { setDisplay('0'); setFresh(false); return }
+      setDisplay(d => d.length > 1 ? d.slice(0, -1) : '0')
       return
     }
     if (val === '=') {
-      if (!expr) return
-      const res = safeEval(expr)
-      if (res !== null) { setPreview(res); setExpr(res); setJustEval(true) }
-      else { setPreview('Erro'); setJustEval(true) }
+      if (pendingOp === null || accum === null) return
+      const result = applyCalcOp(accum, pendingOp, parseFloat(display))
+      setDisplay(fmtCalc(result))
+      setAccum(null); setPendingOp(null); setFresh(true)
       return
     }
 
     const isOp = ['+', '-', '×', '÷'].includes(val)
-    if (justEval && !isOp) {
-      setExpr(val); setPreview(''); setJustEval(false)
+    if (isOp) {
+      const current = parseFloat(display)
+      if (pendingOp !== null && !fresh) {
+        const result = applyCalcOp(accum, pendingOp, current)
+        setAccum(result); setDisplay(fmtCalc(result))
+      } else {
+        setAccum(current)
+      }
+      setPendingOp(val); setFresh(true)
       return
     }
-    const next = (justEval && isOp ? expr : expr) + val
-    setExpr(justEval ? expr + val : expr + val)
-    setPreview('')
-    setJustEval(false)
+
+    if (val === '.') {
+      if (fresh) { setDisplay('0.'); setFresh(false); return }
+      if (!display.includes('.')) setDisplay(d => d + '.')
+      return
+    }
+
+    // Digit
+    if (fresh) { setDisplay(val); setFresh(false) }
+    else setDisplay(d => d === '0' ? val : d + val)
   }
 
-  const displayMain  = preview || expr || '0'
-  const displaySub   = preview && expr !== preview ? expr : ''
+  const context = accum !== null && pendingOp ? `${fmtCalc(accum)} ${pendingOp}` : ''
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -400,16 +416,17 @@ function CalculatorWidget() {
             marginBottom: 10, minHeight: 56, textAlign: 'right',
             border: '1px solid var(--border)', overflow: 'hidden',
           }}>
-            {displaySub && (
-              <div style={{ fontSize: 10, color: 'var(--text3)', wordBreak: 'break-all', marginBottom: 2 }}>
-                {displaySub}
+            {context && (
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>
+                {context}
               </div>
             )}
             <div style={{
-              fontSize: preview ? 22 : 15, fontWeight: 700, wordBreak: 'break-all',
-              color: preview ? 'var(--blue)' : 'var(--text)', lineHeight: 1.2,
+              fontSize: display.length > 12 ? 13 : 22, fontWeight: 700,
+              color: display === 'Erro' ? 'var(--red)' : 'var(--text)', lineHeight: 1.2,
+              wordBreak: 'break-all',
             }}>
-              {displayMain}
+              {display}
             </div>
           </div>
 

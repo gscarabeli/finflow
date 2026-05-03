@@ -36,6 +36,7 @@ function ContaModal({ open, onClose, conta }) {
         <option value="conta-corrente">Conta Corrente</option>
         <option value="conta-investimento">Conta Investimento</option>
         <option value="vale-refeicao">Vale Refeição (VR)</option>
+        <option value="vale-beneficio">Vale Benefício (VB)</option>
         <option value="cartao-credito">Cartão de Crédito</option>
         <option value="outros">Outros</option>
       </Select>
@@ -62,11 +63,12 @@ export default function Contas() {
 
   const getTipoLabel = (tipo) => {
     const labels = {
-      'conta-corrente': 'Conta Corrente',
-      'conta-investimento': 'Conta Investimento',
-      'vale-refeicao': 'Vale Refeição',
-      'cartao-credito': 'Cartão de Crédito',
-      'outros': 'Outros'
+      'Conta Corrente': 'Conta Corrente',
+      'Conta Investimento': 'Conta Investimento',
+      'Vale Refeição': 'Vale Refeição',
+      'Vale Benefício': 'Vale Benefício',
+      'Cartão de Crédito': 'Cartão de Crédito',
+      'Outros': 'Outros'
     }
     return labels[tipo] || tipo
   }

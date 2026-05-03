@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, Edit3, Target, TrendingUp, Calendar, Star } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { fmt, fmtShort, monthsUntil } from '../../hooks/useUtils.js'
@@ -38,9 +38,18 @@ const emptyForm = () => ({
 
 function SonhoModal({ open, onClose, sonho }) {
   const { addSonho, updateSonho } = useStore()
-  const [form, setForm] = useState(sonho ? { ...sonho, meta: sonho.meta.toString(), acumulado: sonho.acumulado.toString() } : emptyForm())
+  const [form, setForm] = useState(emptyForm())
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const isEdit = !!sonho
+
+  useEffect(() => {
+    if (open) {
+      setForm(sonho
+        ? { ...sonho, meta: sonho.meta.toString(), acumulado: sonho.acumulado.toString() }
+        : emptyForm()
+      )
+    }
+  }, [open, sonho])
 
   const submit = () => {
     if (!form.nome || !form.meta) return

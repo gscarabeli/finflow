@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react'
 import { useStore } from './store/useStore.js'
-import { logSecurityWarnings } from './hooks/useSecurity.js'
 import Header from './components/shared/Header.jsx'
 import Login from './components/Login/Login.jsx'
 import Dashboard from './components/Dashboard/Dashboard.jsx'
@@ -9,10 +8,6 @@ import Investimentos from './components/Investimentos/Investimentos.jsx'
 import Sonhos from './components/Sonhos/Sonhos.jsx'
 import IAChat from './components/IAChat/IAChat.jsx'
 import APagar from './components/APagar/APagar.jsx'
-
-if (typeof window !== 'undefined') {
-  logSecurityWarnings()
-}
 
 // Maps legacy theme names (stored before hex migration) to their hex equivalents
 const LEGACY_THEME_NAMES = {
