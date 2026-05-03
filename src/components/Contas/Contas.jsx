@@ -31,7 +31,7 @@ function ContaModal({ open, onClose, conta }) {
 
   return (
     <Modal open={open} onClose={onClose} title={conta ? 'Editar Conta' : 'Nova Conta'}>
-      <Input label="Nome da Conta" placeholder="Ex: Sntander, Picpay, Alelo" value={form.nome} onChange={(e) => set('nome', e.target.value)} />
+      <Input label="Nome da Conta" placeholder="Ex: Santander, Picpay, Alelo" value={form.nome} onChange={(e) => set('nome', e.target.value)} />
       <Select label="Tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)}>
         <option value="conta-corrente">Conta Corrente</option>
         <option value="conta-investimento">Conta Investimento</option>
