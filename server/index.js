@@ -3,7 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import jwt from 'jsonwebtoken'
 import { Resend } from 'resend'
-import { readFile, writeFile } from 'fs/promises'
+import pg from 'pg'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { randomBytes, pbkdf2Sync, timingSafeEqual } from 'crypto'
@@ -11,26 +11,134 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
+const { Pool } = pg
 const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const STATE_PATH = resolve(__dirname, 'state.json')
+const __dirname  = dirname(__filename)
 
-const JWT_SECRET = process.env.JWT_SECRET || 'finflow-dev-secret-change-in-production'
+const JWT_SECRET       = process.env.JWT_SECRET || 'finflow-dev-secret-change-in-production'
 const TOKEN_EXPIRATION = '7d'
-const PORT = process.env.PORT || 4000
-const CLIENT_DIST = resolve(__dirname, '..', 'dist')
-const RESEND_API_KEY = process.env.RESEND_API_KEY || ''
-const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`
-const FROM_EMAIL = 'FinFlow <onboarding@resend.dev>'
+const PORT             = process.env.PORT || 4000
+const CLIENT_DIST      = resolve(__dirname, '..', 'dist')
+const RESEND_API_KEY   = process.env.RESEND_API_KEY || ''
+const APP_URL          = process.env.APP_URL || `http://localhost:${PORT}`
+const FROM_EMAIL       = 'FinFlow <onboarding@resend.dev>'
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || ''
+
+// Lista de e-mails permitidos — quando não configurada, qualquer um pode se cadastrar
+const ALLOWED_EMAILS = process.env.ALLOWED_EMAILS
+  ? new Set(process.env.ALLOWED_EMAILS.split(',').map(e => e.trim().toLowerCase()))
+  : null
 
 const resend = new Resend(RESEND_API_KEY)
 
-// ─── Turnstile verification ───────────────────────────────────────────────────
+// ─── Database ─────────────────────────────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+})
+
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id             TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      email          TEXT UNIQUE NOT NULL,
+      password_hash  TEXT NOT NULL,
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      couple_id      TEXT,
+      profile        JSONB NOT NULL DEFAULT '{}',
+      sonhos         JSONB NOT NULL DEFAULT '[]',
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS couples (
+      id         TEXT PRIMARY KEY,
+      members    TEXT[] NOT NULL,
+      sonhos     JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS pending_tokens (
+      token         TEXT PRIMARY KEY,
+      type          TEXT NOT NULL,
+      user_id       TEXT,
+      partner_email TEXT,
+      expires_at    BIGINT NOT NULL
+    );
+  `)
+}
+
+// ─── DB helpers ───────────────────────────────────────────────────────────────
+function mapUser(row) {
+  if (!row) return null
+  return {
+    id:            row.id,
+    name:          row.name,
+    email:         row.email,
+    passwordHash:  row.password_hash,
+    emailVerified: row.email_verified,
+    coupleId:      row.couple_id,
+    profile:       row.profile || {},
+    sonhos:        row.sonhos  || [],
+    createdAt:     row.created_at,
+  }
+}
+
+function mapCouple(row) {
+  if (!row) return null
+  return { id: row.id, members: row.members, sonhos: row.sonhos || [], createdAt: row.created_at }
+}
+
+async function getUserById(id) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id])
+  return mapUser(rows[0])
+}
+
+async function getUserByEmail(email) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email])
+  return mapUser(rows[0])
+}
+
+async function getCoupleById(id) {
+  const { rows } = await pool.query('SELECT * FROM couples WHERE id = $1', [id])
+  return mapCouple(rows[0])
+}
+
+async function getToken(token, type) {
+  const { rows } = await pool.query(
+    'SELECT * FROM pending_tokens WHERE token = $1 AND type = $2',
+    [token, type]
+  )
+  return rows[0] || null
+}
+
+async function deleteToken(token) {
+  await pool.query('DELETE FROM pending_tokens WHERE token = $1', [token])
+}
+
+async function deleteTokensByUserAndType(userId, type) {
+  await pool.query('DELETE FROM pending_tokens WHERE user_id = $1 AND type = $2', [userId, type])
+}
+
+// Retorna os sonhos do dono (casal ou usuário solo) + função para salvar
+async function getSonhosOwner(userId) {
+  const user = await getUserById(userId)
+  if (user.coupleId) {
+    const couple = await getCoupleById(user.coupleId)
+    return {
+      sonhos: couple.sonhos || [],
+      save: (sonhos) => pool.query('UPDATE couples SET sonhos = $1 WHERE id = $2', [JSON.stringify(sonhos), user.coupleId]),
+    }
+  }
+  return {
+    sonhos: user.sonhos || [],
+    save: (sonhos) => pool.query('UPDATE users SET sonhos = $1 WHERE id = $2', [JSON.stringify(sonhos), userId]),
+  }
+}
+
+// ─── Turnstile ────────────────────────────────────────────────────────────────
 async function verifyTurnstile(token) {
-  if (!TURNSTILE_SECRET) return // skip when not configured
+  if (!TURNSTILE_SECRET) return
   if (!token) throw Object.assign(new Error('Verificação de segurança necessária'), { status: 400 })
-  const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+  const res  = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ secret: TURNSTILE_SECRET, response: token }),
@@ -39,18 +147,18 @@ async function verifyTurnstile(token) {
   if (!data.success) throw Object.assign(new Error('Verificação de segurança falhou. Tente novamente.'), { status: 400 })
 }
 
-// ─── Express setup ────────────────────────────────────────────────────────────
+// ─── Express ──────────────────────────────────────────────────────────────────
 const app = express()
 
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      scriptSrc: ["'self'", 'https://challenges.cloudflare.com'],
-      frameSrc: ["'self'", 'https://challenges.cloudflare.com'],
-      imgSrc: ["'self'", 'data:', 'https:'],
+      styleSrc:   ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc:    ["'self'", 'https://fonts.gstatic.com'],
+      scriptSrc:  ["'self'", 'https://challenges.cloudflare.com'],
+      frameSrc:   ["'self'", 'https://challenges.cloudflare.com'],
+      imgSrc:     ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'", 'https://generativelanguage.googleapis.com', 'https://challenges.cloudflare.com'],
     },
   },
@@ -65,69 +173,10 @@ if (process.env.NODE_ENV === 'production') {
   })
 }
 
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : true,
-  credentials: true,
-}))
+app.use(cors({ origin: process.env.NODE_ENV === 'production' ? false : true, credentials: true }))
 app.use(express.json())
 
-// ─── State helpers ────────────────────────────────────────────────────────────
-async function loadState() {
-  try {
-    const raw = await readFile(STATE_PATH, 'utf-8')
-    return JSON.parse(raw)
-  } catch {
-    const empty = { users: {}, couples: {}, pendingVerifications: {}, pendingResets: {}, pendingInvites: {} }
-    await writeFile(STATE_PATH, JSON.stringify(empty, null, 2), 'utf-8')
-    return empty
-  }
-}
-
-async function saveState(data) {
-  await writeFile(STATE_PATH, JSON.stringify(data, null, 2), 'utf-8')
-}
-
-// ─── Crypto helpers ───────────────────────────────────────────────────────────
-function hashPassword(password) {
-  const salt = randomBytes(16).toString('hex')
-  const derived = pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex')
-  return `${salt}:${derived}`
-}
-
-function verifyPassword(password, stored) {
-  if (!stored || !stored.includes(':')) return false
-  const [salt, hash] = stored.split(':')
-  const derived = pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex')
-  try {
-    return timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex'))
-  } catch {
-    return false
-  }
-}
-
-function generateToken(length = 32) {
-  return randomBytes(length).toString('hex')
-}
-
-function signJWT(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRATION })
-}
-
-// ─── Middleware ───────────────────────────────────────────────────────────────
-function authMiddleware(req, res, next) {
-  const token = (req.headers.authorization || '').split(' ')[1]
-  if (!token) return res.status(401).json({ error: 'Token não fornecido' })
-  try {
-    req.user = jwt.verify(token, JWT_SECRET)
-    next()
-  } catch {
-    res.status(401).json({ error: 'Token inválido ou expirado' })
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  CAMADA 1 — Rate limit por IP (com banimento progressivo)
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Rate limiting ────────────────────────────────────────────────────────────
 const rateLimitMap = new Map()
 
 function getClientIp(req) {
@@ -140,15 +189,12 @@ function getClientIp(req) {
 
 function rateLimit(maxRequests = 5, windowMs = 15 * 60 * 1000) {
   return (req, res, next) => {
-    const ip = getClientIp(req)
-    const key = `${ip}:${req.path}`
-    const now = Date.now()
+    const ip    = getClientIp(req)
+    const key   = `${ip}:${req.path}`
+    const now   = Date.now()
     const entry = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs, strikes: 0 }
 
-    if (now > entry.resetAt) {
-      entry.count = 0
-      entry.resetAt = now + windowMs
-    }
+    if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + windowMs }
 
     entry.count++
     rateLimitMap.set(key, entry)
@@ -156,17 +202,15 @@ function rateLimit(maxRequests = 5, windowMs = 15 * 60 * 1000) {
     if (entry.count > maxRequests) {
       entry.strikes = (entry.strikes || 0) + 1
       const penaltyMs = windowMs * Math.min(entry.strikes, 8)
-      entry.resetAt = now + penaltyMs
+      entry.resetAt   = now + penaltyMs
       rateLimitMap.set(key, entry)
       const minutes = Math.ceil(penaltyMs / 60000)
       return res.status(429).json({ error: `Muitas tentativas. Tente novamente em ${minutes} minuto(s).` })
     }
-
     next()
   }
 }
 
-// Limpa entradas antigas da memória a cada hora
 setInterval(() => {
   const now = Date.now()
   for (const [key, entry] of rateLimitMap.entries()) {
@@ -174,330 +218,274 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000)
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  CAMADA 2 — Cooldown por e-mail (1 e-mail por minuto por endereço)
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Email cooldown ───────────────────────────────────────────────────────────
 const emailCooldownMap = new Map()
 
-function isEmailOnCooldown(email, cooldownMs = 60 * 1000) {
-  const lastSent = emailCooldownMap.get(email.toLowerCase())
-  return lastSent && Date.now() - lastSent < cooldownMs
+function isEmailOnCooldown(email, ms = 60 * 1000) {
+  const last = emailCooldownMap.get(email.toLowerCase())
+  return last && Date.now() - last < ms
 }
-
-function markEmailSent(email) {
-  emailCooldownMap.set(email.toLowerCase(), Date.now())
-}
+function markEmailSent(email) { emailCooldownMap.set(email.toLowerCase(), Date.now()) }
 
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60 * 1000
-  for (const [key, ts] of emailCooldownMap.entries()) {
-    if (ts < cutoff) emailCooldownMap.delete(key)
-  }
+  for (const [k, ts] of emailCooldownMap.entries()) { if (ts < cutoff) emailCooldownMap.delete(k) }
 }, 10 * 60 * 1000)
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  CAMADA 3 — Honeypot (campo invisível; se preenchido = bot)
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Honeypot ─────────────────────────────────────────────────────────────────
 function honeypot(req, res, next) {
-  const trap = req.body?._hp
-  if (trap !== undefined && trap !== '') {
-    // Simula sucesso para não alertar o bot
-    return res.status(200).json({ message: 'ok' })
-  }
+  if (req.body?._hp) return res.status(200).json({ message: 'ok' })
   next()
 }
 
-// ─── Sanitize ─────────────────────────────────────────────────────────────────
+// ─── Misc helpers ─────────────────────────────────────────────────────────────
 function sanitize(value) {
   if (typeof value !== 'string') return ''
   return value.replace(/<script|<iframe|<object|<embed|javascript:/gi, '').trim()
 }
+function isValidEmail(email)    { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) }
+function isStrongPassword(p)    { return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(p) }
+function isEmailAllowed(email)  { return !ALLOWED_EMAILS || ALLOWED_EMAILS.has(email.toLowerCase().trim()) }
 
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+function hashPassword(password) {
+  const salt    = randomBytes(16).toString('hex')
+  const derived = pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex')
+  return `${salt}:${derived}`
 }
 
-function isStrongPassword(password) {
-  // mínimo 8 chars, 1 maiúscula, 1 minúscula, 1 número, 1 especial
-  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password)
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(':')) return false
+  const [salt, hash] = stored.split(':')
+  const derived = pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex')
+  try { return timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex')) } catch { return false }
+}
+
+function generateToken(length = 32) { return randomBytes(length).toString('hex') }
+function signJWT(payload) { return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRATION }) }
+
+function authMiddleware(req, res, next) {
+  const token = (req.headers.authorization || '').split(' ')[1]
+  if (!token) return res.status(401).json({ error: 'Token não fornecido' })
+  try { req.user = jwt.verify(token, JWT_SECRET); next() }
+  catch { res.status(401).json({ error: 'Token inválido ou expirado' }) }
+}
+
+function emptyProfile(name) {
+  return {
+    nome: name, contas: [],
+    investimentos: { reserva: { atual: 0, meta: 0 }, previdencia: 0, acoes: 0, fundos: 0, cdi: 0 },
+    transacoes: [],
+  }
 }
 
 // ─── Email templates ──────────────────────────────────────────────────────────
 function emailVerificationTemplate(name, url) {
-  return `
-    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
-      <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
-      <h2 style="font-size:18px;margin-bottom:16px">Confirme seu e-mail</h2>
-      <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${name}! Clique no botão abaixo para confirmar seu e-mail e ativar sua conta.</p>
-      <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Confirmar e-mail</a>
-      <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 24 horas. Se não foi você, ignore este e-mail.</p>
-    </div>`
+  return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
+    <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
+    <h2 style="font-size:18px;margin-bottom:16px">Confirme seu e-mail</h2>
+    <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${name}! Clique no botão abaixo para confirmar seu e-mail e ativar sua conta.</p>
+    <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Confirmar e-mail</a>
+    <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 24 horas. Se não foi você, ignore este e-mail.</p>
+  </div>`
 }
 
 function passwordResetTemplate(name, url) {
-  return `
-    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
-      <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
-      <h2 style="font-size:18px;margin-bottom:16px">Redefinir senha</h2>
-      <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${name}! Recebemos uma solicitação para redefinir sua senha.</p>
-      <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Redefinir senha</a>
-      <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 1 hora. Se não foi você, sua senha permanece a mesma.</p>
-    </div>`
+  return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
+    <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
+    <h2 style="font-size:18px;margin-bottom:16px">Redefinir senha</h2>
+    <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${name}! Recebemos uma solicitação para redefinir sua senha.</p>
+    <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Redefinir senha</a>
+    <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 1 hora. Se não foi você, sua senha permanece a mesma.</p>
+  </div>`
 }
 
 function coupleInviteTemplate(inviterName, inviteeName, url) {
-  return `
-    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
-      <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
-      <h2 style="font-size:18px;margin-bottom:16px">Convite para o Casal 💑</h2>
-      <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${inviteeName}! <strong style="color:#e8eaf0">${inviterName}</strong> te convidou para gerenciar as finanças do casal juntos no FinFlow.</p>
-      <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Aceitar convite</a>
-      <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 48 horas.</p>
-    </div>`
-}
-
-// ─── Empty profile factory ────────────────────────────────────────────────────
-function emptyProfile(name) {
-  return {
-    nome: name,
-    contas: [],
-    investimentos: { reserva: { atual: 0, meta: 0 }, previdencia: 0, acoes: 0, fundos: 0, cdi: 0 },
-    transacoes: [],
-  }
+  return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
+    <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
+    <h2 style="font-size:18px;margin-bottom:16px">Convite para o Casal 💑</h2>
+    <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${inviteeName}! <strong style="color:#e8eaf0">${inviterName}</strong> te convidou para gerenciar as finanças do casal juntos no FinFlow.</p>
+    <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Aceitar convite</a>
+    <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 48 horas.</p>
+  </div>`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  AUTH ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// POST /api/auth/register
 app.post('/api/auth/register', rateLimit(3), honeypot, async (req, res) => {
   const { name, email, password, cfToken } = req.body
   try { await verifyTurnstile(cfToken) } catch (e) { return res.status(e.status || 400).json({ error: e.message }) }
 
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' })
-  }
-  if (!isValidEmail(email)) {
-    return res.status(400).json({ error: 'E-mail inválido' })
-  }
-  if (!isStrongPassword(password)) {
-    return res.status(400).json({ error: 'Senha não atende aos requisitos de segurança' })
-  }
+  if (!name || !email || !password) return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' })
+  if (!isValidEmail(email))         return res.status(400).json({ error: 'E-mail inválido' })
+  if (!isStrongPassword(password))  return res.status(400).json({ error: 'Senha não atende aos requisitos de segurança' })
 
-  const state = await loadState()
   const normalizedEmail = email.toLowerCase().trim()
 
-  if (Object.values(state.users).some(u => u.email === normalizedEmail)) {
+  if (!isEmailAllowed(normalizedEmail))
+    return res.status(403).json({ error: 'Cadastro não disponível.' })
+
+  if (await getUserByEmail(normalizedEmail))
     return res.status(409).json({ error: 'E-mail já cadastrado' })
-  }
 
-  if (isEmailOnCooldown(normalizedEmail)) {
+  if (isEmailOnCooldown(normalizedEmail))
     return res.status(429).json({ error: 'Aguarde 1 minuto antes de tentar novamente.' })
-  }
 
-  const userId = `u${Date.now()}`
-  const verificationToken = generateToken()
-  const verificationExpiry = Date.now() + 24 * 60 * 60 * 1000
+  const userId  = `u${Date.now()}`
+  const vToken  = generateToken()
+  const expires = Date.now() + 24 * 60 * 60 * 1000
 
-  state.users[userId] = {
-    id: userId,
-    name: sanitize(name),
-    email: normalizedEmail,
-    passwordHash: hashPassword(password),
-    emailVerified: false,
-    coupleId: null,
-    profile: emptyProfile(sanitize(name)),
-    createdAt: new Date().toISOString(),
-  }
+  await pool.query(
+    `INSERT INTO users (id, name, email, password_hash, email_verified, profile, sonhos)
+     VALUES ($1, $2, $3, $4, FALSE, $5, '[]')`,
+    [userId, sanitize(name), normalizedEmail, hashPassword(password), JSON.stringify(emptyProfile(sanitize(name)))]
+  )
+  await pool.query(
+    `INSERT INTO pending_tokens (token, type, user_id, expires_at) VALUES ($1, 'verification', $2, $3)`,
+    [vToken, userId, expires]
+  )
 
-  state.pendingVerifications[verificationToken] = {
-    userId,
-    expiresAt: verificationExpiry,
-  }
-
-  await saveState(state)
-
-  const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${verificationToken}`
+  const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${vToken}`
   try {
     await resend.emails.send({
-      from: FROM_EMAIL,
-      to: normalizedEmail,
+      from: FROM_EMAIL, to: normalizedEmail,
       subject: 'Confirme seu e-mail — FinFlow',
       html: emailVerificationTemplate(sanitize(name), verifyUrl),
     })
     markEmailSent(normalizedEmail)
-  } catch (err) {
-    console.error('Erro ao enviar e-mail de verificação:', err)
-  }
+  } catch (err) { console.error('Erro ao enviar e-mail:', err) }
 
   return res.status(201).json({ message: 'Conta criada! Verifique seu e-mail para ativar.' })
 })
 
-// GET /api/auth/verify-email?token=...
 app.get('/api/auth/verify-email', async (req, res) => {
   const { token } = req.query
   if (!token) return res.status(400).json({ error: 'Token inválido' })
 
-  const state = await loadState()
-  const entry = state.pendingVerifications[token]
-
+  const entry = await getToken(token, 'verification')
   if (!entry) return res.status(400).json({ error: 'Token inválido ou já utilizado' })
-  if (Date.now() > entry.expiresAt) {
-    delete state.pendingVerifications[token]
-    await saveState(state)
+  if (Date.now() > entry.expires_at) {
+    await deleteToken(token)
     return res.status(400).json({ error: 'Token expirado. Solicite um novo e-mail de verificação.' })
   }
 
-  state.users[entry.userId].emailVerified = true
-  delete state.pendingVerifications[token]
-  await saveState(state)
-
-  // Redireciona pro frontend com sucesso
+  await pool.query('UPDATE users SET email_verified = TRUE WHERE id = $1', [entry.user_id])
+  await deleteToken(token)
   return res.redirect(`${APP_URL}/?verified=true`)
 })
 
-// POST /api/auth/resend-verification
 app.post('/api/auth/resend-verification', rateLimit(3), honeypot, async (req, res) => {
   const { email } = req.body
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório' })
 
   const normalizedEmail = email.toLowerCase().trim()
-
-  if (isEmailOnCooldown(normalizedEmail)) {
+  if (isEmailOnCooldown(normalizedEmail))
     return res.status(429).json({ error: 'Aguarde 1 minuto antes de solicitar outro e-mail.' })
-  }
 
-  const state = await loadState()
-  const user = Object.values(state.users).find(u => u.email === normalizedEmail)
-
-  if (!user || user.emailVerified) {
+  const user = await getUserByEmail(normalizedEmail)
+  if (!user || user.emailVerified)
     return res.json({ message: 'Se o e-mail existir e não estiver verificado, você receberá um novo link.' })
-  }
 
-  for (const [t, v] of Object.entries(state.pendingVerifications)) {
-    if (v.userId === user.id) delete state.pendingVerifications[t]
-  }
+  await deleteTokensByUserAndType(user.id, 'verification')
 
-  const token = generateToken()
-  state.pendingVerifications[token] = { userId: user.id, expiresAt: Date.now() + 24 * 60 * 60 * 1000 }
-  await saveState(state)
+  const token   = generateToken()
+  const expires = Date.now() + 24 * 60 * 60 * 1000
+  await pool.query(
+    `INSERT INTO pending_tokens (token, type, user_id, expires_at) VALUES ($1, 'verification', $2, $3)`,
+    [token, user.id, expires]
+  )
 
-  const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${token}`
   await resend.emails.send({
-    from: FROM_EMAIL,
-    to: user.email,
+    from: FROM_EMAIL, to: user.email,
     subject: 'Novo link de verificação — FinFlow',
-    html: emailVerificationTemplate(user.name, verifyUrl),
+    html: emailVerificationTemplate(user.name, `${APP_URL}/api/auth/verify-email?token=${token}`),
   })
   markEmailSent(normalizedEmail)
-
   return res.json({ message: 'Se o e-mail existir e não estiver verificado, você receberá um novo link.' })
 })
 
-// POST /api/auth/login
 app.post('/api/auth/login', rateLimit(10), async (req, res) => {
   const { email, password, cfToken } = req.body
   if (!email || !password) return res.status(400).json({ error: 'E-mail e senha obrigatórios' })
   try { await verifyTurnstile(cfToken) } catch (e) { return res.status(e.status || 400).json({ error: e.message }) }
 
-  const state = await loadState()
-  const user = Object.values(state.users).find(u => u.email === email.toLowerCase().trim())
+  const normalizedEmail = email.toLowerCase().trim()
+  if (!isEmailAllowed(normalizedEmail)) return res.status(403).json({ error: 'Acesso não autorizado.' })
 
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  const user = await getUserByEmail(normalizedEmail)
+  if (!user || !verifyPassword(password, user.passwordHash))
     return res.status(401).json({ error: 'E-mail ou senha incorretos' })
-  }
-
-  if (!user.emailVerified) {
+  if (!user.emailVerified)
     return res.status(403).json({ error: 'E-mail não verificado. Verifique sua caixa de entrada.', code: 'EMAIL_NOT_VERIFIED' })
-  }
 
   const token = signJWT({ userId: user.id, email: user.email })
   return res.json({ token, user: { id: user.id, name: user.name, email: user.email, coupleId: user.coupleId } })
 })
 
-// GET /api/auth/me
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
+  const user = await getUserById(req.user.userId)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
   return res.json({ id: user.id, name: user.name, email: user.email, coupleId: user.coupleId })
 })
 
-// POST /api/auth/forgot-password
 app.post('/api/auth/forgot-password', rateLimit(3), honeypot, async (req, res) => {
   const { email, cfToken } = req.body
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório' })
   try { await verifyTurnstile(cfToken) } catch (e) { return res.status(e.status || 400).json({ error: e.message }) }
 
   const normalizedEmail = email.toLowerCase().trim()
-
-  if (isEmailOnCooldown(normalizedEmail)) {
+  if (isEmailOnCooldown(normalizedEmail))
     return res.status(429).json({ error: 'Aguarde 1 minuto antes de solicitar outro e-mail.' })
-  }
 
-  const state = await loadState()
-  const user = Object.values(state.users).find(u => u.email === normalizedEmail)
-
+  const user = await getUserByEmail(normalizedEmail)
   if (!user) return res.json({ message: 'Se o e-mail estiver cadastrado, você receberá as instruções.' })
 
-  for (const [t, v] of Object.entries(state.pendingResets)) {
-    if (v.userId === user.id) delete state.pendingResets[t]
-  }
+  await deleteTokensByUserAndType(user.id, 'reset')
 
-  const token = generateToken()
-  state.pendingResets[token] = { userId: user.id, expiresAt: Date.now() + 60 * 60 * 1000 }
-  await saveState(state)
+  const token   = generateToken()
+  const expires = Date.now() + 60 * 60 * 1000
+  await pool.query(
+    `INSERT INTO pending_tokens (token, type, user_id, expires_at) VALUES ($1, 'reset', $2, $3)`,
+    [token, user.id, expires]
+  )
 
-  const resetUrl = `${APP_URL}/?reset=${token}`
   await resend.emails.send({
-    from: FROM_EMAIL,
-    to: user.email,
+    from: FROM_EMAIL, to: user.email,
     subject: 'Redefinir senha — FinFlow',
-    html: passwordResetTemplate(user.name, resetUrl),
+    html: passwordResetTemplate(user.name, `${APP_URL}/?reset=${token}`),
   })
   markEmailSent(normalizedEmail)
-
   return res.json({ message: 'Se o e-mail estiver cadastrado, você receberá as instruções.' })
 })
 
-// POST /api/auth/reset-password
 app.post('/api/auth/reset-password', rateLimit(5), async (req, res) => {
   const { token, password } = req.body
-  if (!token || !password) return res.status(400).json({ error: 'Token e nova senha obrigatórios' })
+  if (!token || !password)    return res.status(400).json({ error: 'Token e nova senha obrigatórios' })
   if (!isStrongPassword(password)) return res.status(400).json({ error: 'Senha não atende aos requisitos de segurança' })
 
-  const state = await loadState()
-  const entry = state.pendingResets[token]
-
+  const entry = await getToken(token, 'reset')
   if (!entry) return res.status(400).json({ error: 'Token inválido ou já utilizado' })
-  if (Date.now() > entry.expiresAt) {
-    delete state.pendingResets[token]
-    await saveState(state)
+  if (Date.now() > entry.expires_at) {
+    await deleteToken(token)
     return res.status(400).json({ error: 'Token expirado. Solicite uma nova redefinição.' })
   }
 
-  state.users[entry.userId].passwordHash = hashPassword(password)
-  delete state.pendingResets[token]
-  await saveState(state)
-
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(password), entry.user_id])
+  await deleteToken(token)
   return res.json({ message: 'Senha redefinida com sucesso!' })
 })
 
-// POST /api/auth/change-password
 app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
   const { currentPassword, newPassword } = req.body
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Campos obrigatórios' })
-  if (!isStrongPassword(newPassword)) return res.status(400).json({ error: 'Nova senha não atende aos requisitos' })
+  if (!isStrongPassword(newPassword))   return res.status(400).json({ error: 'Nova senha não atende aos requisitos' })
 
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  if (!verifyPassword(currentPassword, user.passwordHash)) {
+  const user = await getUserById(req.user.userId)
+  if (!verifyPassword(currentPassword, user.passwordHash))
     return res.status(401).json({ error: 'Senha atual incorreta' })
-  }
 
-  user.passwordHash = hashPassword(newPassword)
-  await saveState(state)
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(newPassword), user.id])
   return res.json({ message: 'Senha alterada com sucesso!' })
 })
 
@@ -505,109 +493,81 @@ app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
 //  COUPLE ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// POST /api/couple/invite — convida parceiro por e-mail
 app.post('/api/couple/invite', authMiddleware, rateLimit(3), honeypot, async (req, res) => {
   const { partnerEmail } = req.body
-  if (!partnerEmail || !isValidEmail(partnerEmail)) return res.status(400).json({ error: 'E-mail do parceiro inválido' })
-
-  if (isEmailOnCooldown(partnerEmail)) {
+  if (!partnerEmail || !isValidEmail(partnerEmail))
+    return res.status(400).json({ error: 'E-mail do parceiro inválido' })
+  if (isEmailOnCooldown(partnerEmail))
     return res.status(429).json({ error: 'Aguarde 1 minuto antes de enviar outro convite.' })
-  }
 
-  const state = await loadState()
-  const inviter = state.users[req.user.userId]
-
+  const inviter = await getUserById(req.user.userId)
   if (inviter.coupleId) return res.status(400).json({ error: 'Você já faz parte de um casal' })
-  if (inviter.email === partnerEmail.toLowerCase().trim()) return res.status(400).json({ error: 'Você não pode se convidar' })
+  if (inviter.email === partnerEmail.toLowerCase().trim())
+    return res.status(400).json({ error: 'Você não pode se convidar' })
 
-  const partner = Object.values(state.users).find(u => u.email === partnerEmail.toLowerCase().trim())
+  const partner     = await getUserByEmail(partnerEmail.toLowerCase().trim())
   const partnerName = partner?.name || partnerEmail.split('@')[0]
-
   if (partner?.coupleId) return res.status(400).json({ error: 'Este usuário já faz parte de um casal' })
 
-  // Remove convites antigos deste inviter
-  for (const [t, v] of Object.entries(state.pendingInvites)) {
-    if (v.inviterId === inviter.id) delete state.pendingInvites[t]
-  }
+  await deleteTokensByUserAndType(inviter.id, 'invite')
 
-  const token = generateToken()
-  state.pendingInvites[token] = {
-    inviterId: inviter.id,
-    partnerEmail: partnerEmail.toLowerCase().trim(),
-    expiresAt: Date.now() + 48 * 60 * 60 * 1000, // 48h
-  }
-  await saveState(state)
+  const token   = generateToken()
+  const expires = Date.now() + 48 * 60 * 60 * 1000
+  await pool.query(
+    `INSERT INTO pending_tokens (token, type, user_id, partner_email, expires_at) VALUES ($1, 'invite', $2, $3, $4)`,
+    [token, inviter.id, partnerEmail.toLowerCase().trim(), expires]
+  )
 
   const inviteUrl = partner
-    ? `${APP_URL}/?invite=${token}` // já tem conta, vai direto
-    : `${APP_URL}/?invite=${token}&register=true` // precisa criar conta
+    ? `${APP_URL}/?invite=${token}`
+    : `${APP_URL}/?invite=${token}&register=true`
 
   await resend.emails.send({
-    from: FROM_EMAIL,
-    to: partnerEmail.toLowerCase().trim(),
+    from: FROM_EMAIL, to: partnerEmail.toLowerCase().trim(),
     subject: `${inviter.name} te convidou para o FinFlow 💑`,
     html: coupleInviteTemplate(inviter.name, partnerName, inviteUrl),
   })
   markEmailSent(partnerEmail)
-
   return res.json({ message: 'Convite enviado!' })
 })
 
-// POST /api/couple/accept — aceita o convite
 app.post('/api/couple/accept', authMiddleware, async (req, res) => {
   const { token } = req.body
   if (!token) return res.status(400).json({ error: 'Token obrigatório' })
 
-  const state = await loadState()
-  const invite = state.pendingInvites[token]
-
+  const invite = await getToken(token, 'invite')
   if (!invite) return res.status(400).json({ error: 'Convite inválido ou já utilizado' })
-  if (Date.now() > invite.expiresAt) {
-    delete state.pendingInvites[token]
-    await saveState(state)
+  if (Date.now() > invite.expires_at) {
+    await deleteToken(token)
     return res.status(400).json({ error: 'Convite expirado. Peça um novo convite.' })
   }
 
-  const accepter = state.users[req.user.userId]
-  const inviter = state.users[invite.inviterId]
+  const accepter = await getUserById(req.user.userId)
+  const inviter  = await getUserById(invite.user_id)
 
-  if (!inviter) return res.status(400).json({ error: 'Quem enviou o convite não existe mais' })
+  if (!inviter)          return res.status(400).json({ error: 'Quem enviou o convite não existe mais' })
   if (accepter.coupleId) return res.status(400).json({ error: 'Você já faz parte de um casal' })
-  if (inviter.coupleId) return res.status(400).json({ error: 'Quem te convidou já faz parte de outro casal' })
+  if (inviter.coupleId)  return res.status(400).json({ error: 'Quem te convidou já faz parte de outro casal' })
 
   const coupleId = `couple_${Date.now()}`
-  const couple = {
-    id: coupleId,
-    members: [inviter.id, accepter.id],
-    sonhos: [],
-    createdAt: new Date().toISOString(),
-  }
-
-  state.couples[coupleId] = couple
-  state.users[inviter.id].coupleId = coupleId
-  state.users[accepter.id].coupleId = coupleId
-  delete state.pendingInvites[token]
-
-  await saveState(state)
+  await pool.query(
+    `INSERT INTO couples (id, members, sonhos) VALUES ($1, $2, '[]')`,
+    [coupleId, [inviter.id, accepter.id]]
+  )
+  await pool.query('UPDATE users SET couple_id = $1 WHERE id = ANY($2)', [coupleId, [inviter.id, accepter.id]])
+  await deleteToken(token)
   return res.json({ message: 'Casal formado com sucesso!', coupleId })
 })
 
-// DELETE /api/couple — sair do casal
 app.delete('/api/couple', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
+  const user = await getUserById(req.user.userId)
   if (!user.coupleId) return res.status(400).json({ error: 'Você não faz parte de um casal' })
 
-  const couple = state.couples[user.coupleId]
+  const couple = await getCoupleById(user.coupleId)
   if (couple) {
-    // Remove coupleId de todos os membros
-    for (const memberId of couple.members) {
-      if (state.users[memberId]) state.users[memberId].coupleId = null
-    }
-    delete state.couples[user.coupleId]
+    await pool.query('UPDATE users SET couple_id = NULL WHERE id = ANY($1)', [couple.members])
+    await pool.query('DELETE FROM couples WHERE id = $1', [user.coupleId])
   }
-
-  await saveState(state)
   return res.json({ message: 'Você saiu do casal.' })
 })
 
@@ -616,64 +576,53 @@ app.delete('/api/couple', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/profile', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
+  const user = await getUserById(req.user.userId)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
 
   if (user.coupleId) {
-    const couple = state.couples[user.coupleId]
-    const [m1, m2] = couple.members.map(id => state.users[id])
-    return res.json({ eu: m1.profile, parceiro: m2.profile, sonhos: couple.sonhos })
+    const couple  = await getCoupleById(user.coupleId)
+    const members = await Promise.all(couple.members.map(id => getUserById(id)))
+    const me      = members.find(m => m.id === user.id)
+    const partner = members.find(m => m.id !== user.id)
+    return res.json({ eu: me.profile, parceiro: partner?.profile ?? null })
   }
 
-  return res.json({ eu: user.profile, sonhos: [] })
+  return res.json({ eu: user.profile })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  SONHOS ROUTES (agora no casal ou no usuário solo)
+//  SONHOS ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function getSonhosOwner(state, userId) {
-  const user = state.users[userId]
-  if (user.coupleId) return state.couples[user.coupleId]
-  return user // solo: sonhos ficam no user
-}
-
 app.get('/api/sonhos', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const owner = getSonhosOwner(state, req.user.userId)
-  return res.json(owner.sonhos || [])
+  const owner = await getSonhosOwner(req.user.userId)
+  return res.json(owner.sonhos)
 })
 
 app.post('/api/sonhos', authMiddleware, async (req, res) => {
-  const state = await loadState()
   const sonho = req.body
   if (!sonho?.nome || !sonho?.meta) return res.status(400).json({ error: 'Dados do sonho inválidos' })
 
-  const owner = getSonhosOwner(state, req.user.userId)
-  if (!owner.sonhos) owner.sonhos = []
-
+  const owner   = await getSonhosOwner(req.user.userId)
   const created = { ...sonho, nome: sanitize(sonho.nome), notas: sanitize(sonho.notas || ''), id: `s${Date.now()}` }
-  owner.sonhos.push(created)
-  await saveState(state)
+  const updated = [...owner.sonhos, created]
+  await owner.save(updated)
   return res.json(created)
 })
 
 app.put('/api/sonhos/:id', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const owner = getSonhosOwner(state, req.user.userId)
-  const idx = (owner.sonhos || []).findIndex(s => s.id === req.params.id)
+  const owner = await getSonhosOwner(req.user.userId)
+  const idx   = owner.sonhos.findIndex(s => s.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Sonho não encontrado' })
   owner.sonhos[idx] = { ...owner.sonhos[idx], ...req.body, nome: sanitize(req.body.nome || owner.sonhos[idx].nome) }
-  await saveState(state)
+  await owner.save(owner.sonhos)
   return res.json(owner.sonhos[idx])
 })
 
 app.delete('/api/sonhos/:id', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const owner = getSonhosOwner(state, req.user.userId)
-  owner.sonhos = (owner.sonhos || []).filter(s => s.id !== req.params.id)
-  await saveState(state)
+  const owner   = await getSonhosOwner(req.user.userId)
+  const updated = owner.sonhos.filter(s => s.id !== req.params.id)
+  await owner.save(updated)
   return res.json({ success: true })
 })
 
@@ -682,64 +631,58 @@ app.delete('/api/sonhos/:id', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post('/api/transactions', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
+  const user = await getUserById(req.user.userId)
   const data = req.body
 
-  if (!data?.desc || typeof data.valor !== 'number' || !data.tipo || !data.cat || !data.data) {
+  if (!data?.desc || typeof data.valor !== 'number' || !data.tipo || !data.cat || !data.data)
     return res.status(400).json({ error: 'Dados da transação inválidos' })
-  }
 
-  const tx = { ...data, desc: sanitize(data.desc), cat: sanitize(data.cat), id: `t${Date.now()}` }
+  const tx      = { ...data, desc: sanitize(data.desc), cat: sanitize(data.cat), id: `t${Date.now()}` }
+  const profile = { ...user.profile }
 
-  // Atualiza saldo da conta se especificada
   if (data.contaId) {
-    const contaIdx = user.profile.contas.findIndex(c => c.id === data.contaId)
-    if (contaIdx !== -1) {
-      user.profile.contas[contaIdx].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
-    }
+    const ci = profile.contas.findIndex(c => c.id === data.contaId)
+    if (ci !== -1) profile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
   }
 
-  user.profile.transacoes.unshift(tx)
-  await saveState(state)
+  profile.transacoes = [tx, ...(profile.transacoes || [])]
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
   return res.json(tx)
 })
 
 app.put('/api/transactions/:id', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  const idx = user.profile.transacoes.findIndex(t => t.id === req.params.id)
+  const user    = await getUserById(req.user.userId)
+  const profile = { ...user.profile }
+  const idx     = profile.transacoes.findIndex(t => t.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Transação não encontrada' })
 
-  const old = user.profile.transacoes[idx]
+  const old  = profile.transacoes[idx]
   const data = req.body
 
-  // Reverte saldo antigo
   if (old.contaId) {
-    const ci = user.profile.contas.findIndex(c => c.id === old.contaId)
-    if (ci !== -1) user.profile.contas[ci].saldo += old.tipo === 'entrada' ? -old.valor : old.valor
+    const ci = profile.contas.findIndex(c => c.id === old.contaId)
+    if (ci !== -1) profile.contas[ci].saldo += old.tipo === 'entrada' ? -old.valor : old.valor
   }
-  // Aplica novo saldo
   if (data.contaId) {
-    const ci = user.profile.contas.findIndex(c => c.id === data.contaId)
-    if (ci !== -1) user.profile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
+    const ci = profile.contas.findIndex(c => c.id === data.contaId)
+    if (ci !== -1) profile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
   }
 
-  user.profile.transacoes[idx] = {
+  profile.transacoes[idx] = {
     ...old, ...data,
     desc: sanitize(data.desc || old.desc),
-    cat: sanitize(data.cat || old.cat),
+    cat:  sanitize(data.cat  || old.cat),
     updatedAt: new Date().toISOString(),
   }
-  await saveState(state)
-  return res.json(user.profile.transacoes[idx])
+
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  return res.json(profile.transacoes[idx])
 })
 
 app.delete('/api/transactions/:id', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  user.profile.transacoes = user.profile.transacoes.filter(t => t.id !== req.params.id)
-  await saveState(state)
+  const user    = await getUserById(req.user.userId)
+  const profile = { ...user.profile, transacoes: user.profile.transacoes.filter(t => t.id !== req.params.id) }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
   return res.json({ success: true })
 })
 
@@ -748,11 +691,10 @@ app.delete('/api/transactions/:id', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.put('/api/investimentos', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  user.profile.investimentos = { ...user.profile.investimentos, ...req.body }
-  await saveState(state)
-  return res.json(user.profile.investimentos)
+  const user    = await getUserById(req.user.userId)
+  const profile = { ...user.profile, investimentos: { ...user.profile.investimentos, ...req.body } }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  return res.json(profile.investimentos)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -760,39 +702,41 @@ app.put('/api/investimentos', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/contas', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  return res.json({ contas: user.profile.contas })
+  const user = await getUserById(req.user.userId)
+  return res.json({ contas: user.profile.contas || [] })
 })
 
 app.post('/api/contas', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
+  const user = await getUserById(req.user.userId)
   const data = req.body
-  if (!data?.nome || !data?.tipo || typeof data.saldo !== 'number') {
+  if (!data?.nome || !data?.tipo || typeof data.saldo !== 'number')
     return res.status(400).json({ error: 'Dados da conta inválidos' })
-  }
-  const conta = { ...data, nome: sanitize(data.nome), id: `c${Date.now()}`, createdAt: new Date().toISOString() }
-  user.profile.contas.push(conta)
-  await saveState(state)
+
+  const conta   = { ...data, nome: sanitize(data.nome), id: `c${Date.now()}`, createdAt: new Date().toISOString() }
+  const profile = { ...user.profile, contas: [...(user.profile.contas || []), conta] }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
   return res.json(conta)
 })
 
 app.put('/api/contas/:id', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  const idx = user.profile.contas.findIndex(c => c.id === req.params.id)
+  const user    = await getUserById(req.user.userId)
+  const profile = { ...user.profile }
+  const idx     = profile.contas.findIndex(c => c.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Conta não encontrada' })
-  user.profile.contas[idx] = { ...user.profile.contas[idx], ...req.body, nome: sanitize(req.body.nome || user.profile.contas[idx].nome), updatedAt: new Date().toISOString() }
-  await saveState(state)
-  return res.json(user.profile.contas[idx])
+
+  profile.contas[idx] = {
+    ...profile.contas[idx], ...req.body,
+    nome: sanitize(req.body.nome || profile.contas[idx].nome),
+    updatedAt: new Date().toISOString(),
+  }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  return res.json(profile.contas[idx])
 })
 
 app.delete('/api/contas/:id', authMiddleware, async (req, res) => {
-  const state = await loadState()
-  const user = state.users[req.user.userId]
-  user.profile.contas = user.profile.contas.filter(c => c.id !== req.params.id)
-  await saveState(state)
+  const user    = await getUserById(req.user.userId)
+  const profile = { ...user.profile, contas: user.profile.contas.filter(c => c.id !== req.params.id) }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
   return res.json({ success: true })
 })
 
@@ -827,7 +771,7 @@ app.post('/api/gemini', authMiddleware, async (req, res) => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  STATIC (produção)
+//  STATIC
 // ═══════════════════════════════════════════════════════════════════════════════
 
 if (process.env.NODE_ENV === 'production') {
@@ -835,4 +779,14 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => res.sendFile(resolve(CLIENT_DIST, 'index.html')))
 }
 
-app.listen(PORT, () => console.log(`FinFlow backend rodando em http://localhost:${PORT}`))
+// ─── Start ────────────────────────────────────────────────────────────────────
+async function main() {
+  if (!process.env.DATABASE_URL) {
+    console.error('ERRO: DATABASE_URL não configurada.')
+    process.exit(1)
+  }
+  await initDB()
+  app.listen(PORT, () => console.log(`FinFlow rodando em http://localhost:${PORT}`))
+}
+
+main().catch(err => { console.error('Falha ao iniciar:', err); process.exit(1) })
