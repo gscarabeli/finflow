@@ -89,7 +89,7 @@ const THEME_VARIANTS = {
 }
 
 export default function App() {
-  const { tab, viewMode, themeByMode, authenticated, initialized, initialize } = useStore()
+  const { tab, viewMode, themeByMode, authenticated, initialized, initialize, acceptInvite } = useStore()
 
   useEffect(() => {
     initialize()
@@ -102,6 +102,17 @@ export default function App() {
       document.documentElement.style.setProperty(key, value)
     })
   }, [viewMode, themeByMode])
+
+  // Accept couple invite from URL (?invite=TOKEN) or sessionStorage (post-register flow)
+  useEffect(() => {
+    if (!authenticated) return
+    const params = new URLSearchParams(window.location.search)
+    const inviteToken = params.get('invite') || sessionStorage.getItem('pendingInvite')
+    if (!inviteToken) return
+    sessionStorage.removeItem('pendingInvite')
+    window.history.replaceState({}, '', window.location.pathname)
+    acceptInvite(inviteToken).catch(() => {})
+  }, [authenticated])
 
   if (!initialized) {
     return null
