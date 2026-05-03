@@ -26,6 +26,9 @@ import {
   apiAcceptInvite,
   apiLeaveCouple,
   apiUpdateProfile,
+  apiCreatePagamento,
+  apiUpdatePagamento,
+  apiDeletePagamento,
   saveAuthToken,
   clearAuthTokenLocal,
 } from '../services/apiClient.js'
@@ -265,6 +268,22 @@ export const useStore = create((set, get) => ({
   deleteSonho: async (id) => {
     await apiDeleteSonho(id)
     set(s => ({ sonhos: s.sonhos.filter(s => s.id !== id) }))
+  },
+
+  // ── Pagamentos ──────────────────────────────────────────────────────────────
+  addPagamento: async (p) => {
+    const created = await apiCreatePagamento(p)
+    set(s => ({ myProfile: { ...s.myProfile, pagamentos: [...(s.myProfile.pagamentos ?? []), created] } }))
+  },
+
+  updatePagamento: async (id, p) => {
+    const updated = await apiUpdatePagamento(id, p)
+    set(s => ({ myProfile: { ...s.myProfile, pagamentos: (s.myProfile.pagamentos ?? []).map(item => item.id === id ? updated : item) } }))
+  },
+
+  deletePagamento: async (id) => {
+    await apiDeletePagamento(id)
+    set(s => ({ myProfile: { ...s.myProfile, pagamentos: (s.myProfile.pagamentos ?? []).filter(item => item.id !== id) } }))
   },
 
   // ── buildFinancialContext (para IA) ─────────────────────────────────────────

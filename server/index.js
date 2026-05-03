@@ -608,16 +608,32 @@ app.delete('/api/couple', authMiddleware, async (req, res) => {
 //  PROFILE ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Processes scheduled transactions whose date has arrived — removes the agendada flag
+async function processScheduledTransactions(userId, profile) {
+  const today = new Date().toISOString().split('T')[0]
+  const txs = profile.transacoes || []
+  const updated = txs.map(t => (t.agendada && t.data <= today) ? { ...t, agendada: false } : t)
+  if (updated.some((t, i) => t !== txs[i])) {
+    const newProfile = { ...profile, transacoes: updated }
+    await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(newProfile), userId])
+    return newProfile
+  }
+  return profile
+}
+
 app.get('/api/profile', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
+  let user = await getUserById(req.user.userId)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
+
+  user = { ...user, profile: await processScheduledTransactions(user.id, user.profile) }
 
   if (user.coupleId) {
     const couple  = await getCoupleById(user.coupleId)
     const members = await Promise.all(couple.members.map(id => getUserById(id)))
     const me      = members.find(m => m.id === user.id)
     const partner = members.find(m => m.id !== user.id)
-    return res.json({ eu: me.profile, parceiro: partner?.profile ?? null })
+    const meProfile = await processScheduledTransactions(me.id, me.profile)
+    return res.json({ eu: meProfile, parceiro: partner?.profile ?? null })
   }
 
   return res.json({ eu: user.profile })
@@ -769,6 +785,54 @@ app.put('/api/contas/:id', authMiddleware, async (req, res) => {
 app.delete('/api/contas/:id', authMiddleware, async (req, res) => {
   const user    = await getUserById(req.user.userId)
   const profile = { ...user.profile, contas: user.profile.contas.filter(c => c.id !== req.params.id) }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  return res.json({ success: true })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PAGAMENTOS ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/pagamentos', authMiddleware, async (req, res) => {
+  const user = await getUserById(req.user.userId)
+  const data = req.body
+  if (!data?.nome || typeof data.valor !== 'number' || !data?.vencimento)
+    return res.status(400).json({ error: 'Dados inválidos' })
+
+  const item = {
+    id: `pay${Date.now()}`,
+    nome: sanitize(data.nome),
+    valor: data.valor,
+    vencimento: data.vencimento,
+    pago: false,
+    categoria: sanitize(data.categoria || 'Outros'),
+    createdAt: new Date().toISOString(),
+  }
+  const profile = { ...user.profile, pagamentos: [...(user.profile.pagamentos || []), item] }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  return res.json(item)
+})
+
+app.put('/api/pagamentos/:id', authMiddleware, async (req, res) => {
+  const user = await getUserById(req.user.userId)
+  const pagamentos = [...(user.profile.pagamentos || [])]
+  const idx = pagamentos.findIndex(p => p.id === req.params.id)
+  if (idx === -1) return res.status(404).json({ error: 'Pagamento não encontrado' })
+
+  pagamentos[idx] = {
+    ...pagamentos[idx], ...req.body,
+    nome: sanitize(req.body.nome || pagamentos[idx].nome),
+    categoria: sanitize(req.body.categoria || pagamentos[idx].categoria),
+    updatedAt: new Date().toISOString(),
+  }
+  const profile = { ...user.profile, pagamentos }
+  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  return res.json(pagamentos[idx])
+})
+
+app.delete('/api/pagamentos/:id', authMiddleware, async (req, res) => {
+  const user = await getUserById(req.user.userId)
+  const profile = { ...user.profile, pagamentos: (user.profile.pagamentos || []).filter(p => p.id !== req.params.id) }
   await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
   return res.json({ success: true })
 })

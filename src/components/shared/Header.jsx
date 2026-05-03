@@ -4,11 +4,12 @@ import { useStore } from '../../store/useStore.js'
 import { Modal, Input, Button } from './UI.jsx'
 
 const TABS = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'contas', label: 'Contas' },
-  { id: 'investimentos', label: 'Investimentos' },
-  { id: 'sonhos', label: 'Sonhos', onlyCasal: true },
-  { id: 'ia', label: 'Consultoria IA', onlyCasal: true },
+  { id: 'dashboard',    label: 'Dashboard' },
+  { id: 'contas',       label: 'Contas' },
+  { id: 'investimentos',label: 'Investimentos' },
+  { id: 'apagar',       label: 'A Pagar' },
+  { id: 'sonhos',       label: 'Sonhos',        requiresCasal: true },
+  { id: 'ia',           label: 'Consultoria IA', requiresCasal: true },
 ]
 
 // Backwards-compat: legacy theme names stored before hex migration
@@ -310,7 +311,7 @@ export default function Header() {
       {/* Tabs */}
       <nav className="flex flex-wrap gap-1 rounded-xl p-1 border overflow-x-auto"
         style={{ background: 'var(--bg3)', borderColor: 'var(--border)' }}>
-        {TABS.filter(t => !t.onlyCasal || viewMode === 'casal').map((t) => (
+        {TABS.filter(t => !t.requiresCasal || !hasPartner || viewMode === 'casal').map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}

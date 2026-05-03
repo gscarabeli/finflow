@@ -162,6 +162,19 @@ export async function apiUpdateProfile(data) {
   return apiFetch('/auth/profile', { method: 'PUT', body: JSON.stringify(data) })
 }
 
+// ─── Pagamentos ───────────────────────────────────────────────────────────────
+export async function apiCreatePagamento(pagamento) {
+  return apiFetch('/pagamentos', { method: 'POST', body: JSON.stringify(pagamento) })
+}
+
+export async function apiUpdatePagamento(id, pagamento) {
+  return apiFetch(`/pagamentos/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(pagamento) })
+}
+
+export async function apiDeletePagamento(id) {
+  return apiFetch(`/pagamentos/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
 // ─── Gemini ───────────────────────────────────────────────────────────────────
 export async function apiLoadGeminiResponse(body) {
   return apiFetch('/gemini', { method: 'POST', body: JSON.stringify(body) })

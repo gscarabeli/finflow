@@ -8,6 +8,7 @@ import Contas from './components/Contas/Contas.jsx'
 import Investimentos from './components/Investimentos/Investimentos.jsx'
 import Sonhos from './components/Sonhos/Sonhos.jsx'
 import IAChat from './components/IAChat/IAChat.jsx'
+import APagar from './components/APagar/APagar.jsx'
 
 if (typeof window !== 'undefined') {
   logSecurityWarnings()
@@ -115,6 +116,7 @@ export default function App() {
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'contas' && <Contas />}
         {tab === 'investimentos' && <Investimentos />}
+        {tab === 'apagar' && <APagar />}
         {tab === 'sonhos' && <Sonhos />}
         {tab === 'ia' && <IAChat />}
       </main>

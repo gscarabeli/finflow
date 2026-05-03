@@ -1,69 +1,55 @@
 import React, { useState, useMemo } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { Plus, Trash2, Edit2 } from 'lucide-react'
+import { Plus, Trash2, Edit2, Clock, Loader } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { CAT_COLORS, CAT_ICONS, CATEGORIAS } from '../../data/mockData.js'
 import { fmt, fmtShort, fmtDate } from '../../hooks/useUtils.js'
 import { Card, CardTitle, StatCard, Badge, Modal, Input, Select, Button, ProgressBar } from '../shared/UI.jsx'
 
+const EMPTY_TX_FORM = {
+  desc: '', valor: '', tipo: 'saida', cat: 'Alimentação',
+  data: new Date().toISOString().split('T')[0], agendada: false,
+}
+
+function fromEditingTx(tx) {
+  return { desc: tx.desc, valor: tx.valor.toString(), tipo: tx.tipo, cat: tx.cat, data: tx.data, agendada: !!tx.agendada }
+}
+
 function AddTxModal({ open, onClose, editingTx }) {
   const { addTransaction, updateTransaction } = useStore()
   const isEdit = !!editingTx
-  const [form, setForm] = useState(
-    editingTx ? {
-      desc: editingTx.desc,
-      valor: editingTx.valor.toString(),
-      tipo: editingTx.tipo,
-      cat: editingTx.cat,
-      data: editingTx.data
-    } : {
-      desc: '',
-      valor: '',
-      tipo: 'saida',
-      cat: 'Alimentação',
-      data: new Date().toISOString().split('T')[0]
-    }
-  )
+  const [form, setForm] = useState(editingTx ? fromEditingTx(editingTx) : { ...EMPTY_TX_FORM })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   React.useEffect(() => {
-    if (editingTx) {
-      setForm({
-        desc: editingTx.desc,
-        valor: editingTx.valor.toString(),
-        tipo: editingTx.tipo,
-        cat: editingTx.cat,
-        data: editingTx.data
-      })
-    } else {
-      setForm({
-        desc: '',
-        valor: '',
-        tipo: 'saida',
-        cat: 'Alimentação',
-        data: new Date().toISOString().split('T')[0]
-      })
+    if (open) {
+      setForm(editingTx ? fromEditingTx(editingTx) : { ...EMPTY_TX_FORM, data: new Date().toISOString().split('T')[0] })
+      setError(null)
     }
-  }, [editingTx])
+  }, [open, editingTx])
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.desc || !form.valor) return
-    const tx = { ...form, valor: parseFloat(form.valor) }
-    if (isEdit) {
-      updateTransaction(editingTx.id, tx)
-    } else {
-      addTransaction(tx)
+    setLoading(true); setError(null)
+    try {
+      const tx = { ...form, valor: parseFloat(form.valor) }
+      if (isEdit) {
+        await updateTransaction(editingTx.id, tx)
+      } else {
+        await addTransaction(tx)
+      }
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar. Tente novamente.')
+    } finally {
+      setLoading(false)
     }
-    setForm({
-      desc: '',
-      valor: '',
-      tipo: 'saida',
-      cat: 'Alimentação',
-      data: new Date().toISOString().split('T')[0]
-    })
-    setEditingTx && setEditingTx(null)
-    onClose()
   }
+
+  const today = new Date().toISOString().split('T')[0]
+  const isAgendadaFutura = form.agendada && form.data > today
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? "Editar Transação" : "Nova Transação"}>
@@ -77,9 +63,44 @@ function AddTxModal({ open, onClose, editingTx }) {
       <Select label="Categoria" value={form.cat} onChange={(e) => set('cat', e.target.value)}>
         {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
       </Select>
+
+      {/* Agendar toggle */}
+      {!isEdit && (
+        <label className="flex items-center gap-2.5 cursor-pointer mt-1 mb-1" style={{ color: 'var(--text2)', fontSize: 13 }}>
+          <div
+            onClick={() => set('agendada', !form.agendada)}
+            style={{
+              width: 36, height: 20, borderRadius: 10, position: 'relative', cursor: 'pointer',
+              background: form.agendada ? 'var(--blue)' : 'var(--border2)',
+              transition: 'background 0.2s',
+            }}
+          >
+            <div style={{
+              position: 'absolute', top: 2, left: form.agendada ? 18 : 2,
+              width: 16, height: 16, borderRadius: '50%', background: '#fff',
+              transition: 'left 0.2s',
+            }} />
+          </div>
+          Agendar (não débita até a data chegar)
+        </label>
+      )}
+      {isAgendadaFutura && (
+        <div className="text-xs p-2 rounded-lg mb-1" style={{ background: 'var(--blue-bg)', color: 'var(--blue)' }}>
+          Esta transação ficará pendente e será debitada automaticamente em {form.data}.
+        </div>
+      )}
+
+      {error && (
+        <div className="text-xs p-2.5 rounded-lg mb-1" style={{ background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid var(--red)' }}>
+          {error}
+        </div>
+      )}
+
       <div className="flex gap-2 mt-2">
-        <Button onClick={submit}>{isEdit ? "Salvar" : "Adicionar"}</Button>
-        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button onClick={submit} disabled={loading || !form.desc || !form.valor}>
+          {loading ? <><Loader size={13} className="inline animate-spin mr-1.5" />{isEdit ? 'Salvando...' : 'Adicionando...'}</> : (isEdit ? 'Salvar' : 'Adicionar')}
+        </Button>
+        <Button variant="ghost" onClick={onClose} disabled={loading}>Cancelar</Button>
       </div>
     </Modal>
   )
@@ -102,8 +123,13 @@ export default function Dashboard() {
   const pd = getActiveData()
   const isCasal = viewMode === 'casal'
 
-  const { entradas, saidas, saldo, catData, saldoContas, saldoVR, nonVrCount } = useMemo(() => {
-    const txs = pd.transacoes
+  const today = new Date().toISOString().split('T')[0]
+
+  const { entradas, saidas, saldo, catData, saldoContas, saldoVR, nonVrCount, agendadas } = useMemo(() => {
+    const allTxs = pd.transacoes
+    // Separate scheduled future transactions — they don't count in the balance yet
+    const agendadas = allTxs.filter((t) => t.agendada && t.data > today).sort((a, b) => a.data.localeCompare(b.data))
+    const txs = allTxs.filter((t) => !t.agendada || t.data <= today)
     const entradas = txs.filter((t) => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0)
     const saidas = txs.filter((t) => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0)
     const catMap = {}
@@ -113,8 +139,8 @@ export default function Dashboard() {
     const saldoVR = pd.contas.filter(isVR).reduce((s, c) => s + c.saldo, 0)
     const saldoContas = pd.contas.filter((c) => !isVR(c)).reduce((s, c) => s + c.saldo, 0)
     const nonVrCount = pd.contas.filter((c) => !isVR(c)).length
-    return { entradas, saidas, saldo: entradas - saidas, catData, saldoContas, saldoVR, nonVrCount }
-  }, [pd])
+    return { entradas, saidas, saldo: entradas - saidas, catData, saldoContas, saldoVR, nonVrCount, agendadas }
+  }, [pd, today])
 
   const maxCat = catData[0]?.value || 1
 
@@ -159,9 +185,9 @@ export default function Dashboard() {
         {/* Transactions */}
         <div className="lg:col-span-2">
           <Card>
-            <CardTitle right={<Badge color="blue">{pd.transacoes.length}</Badge>}>Últimas Transações</CardTitle>
+            <CardTitle right={<Badge color="blue">{pd.transacoes.filter(t => !t.agendada || t.data <= today).length}</Badge>}>Últimas Transações</CardTitle>
             <div className="flex flex-col gap-0.5">
-              {pd.transacoes.slice(0, 10).map((tx) => (
+              {pd.transacoes.filter(t => !t.agendada || t.data <= today).slice(0, 10).map((tx) => (
                 <div key={tx.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl group transition-colors"
                   style={{ cursor: 'default' }}
                   onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg3)'}
@@ -244,6 +270,48 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Próximas transações agendadas */}
+      {agendadas.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <CardTitle right={<Badge color="blue">{agendadas.length}</Badge>}>
+            <span className="flex items-center gap-2"><Clock size={15} style={{ color: 'var(--blue)' }} /> Próximas Transações</span>
+          </CardTitle>
+          <div className="flex flex-col gap-0.5">
+            {agendadas.map((tx) => (
+              <div key={tx.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl group transition-colors"
+                style={{ opacity: 0.75 }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg3)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm flex-shrink-0"
+                  style={{ background: (CAT_COLORS[tx.cat] || '#9aa0b8') + '22' }}>
+                  {CAT_ICONS[tx.cat] || '📌'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{tx.desc}</div>
+                  <div className="text-xs" style={{ color: 'var(--text3)' }}>{tx.cat}</div>
+                </div>
+                <div className="text-sm font-semibold" style={{ color: tx.tipo === 'entrada' ? 'var(--green)' : 'var(--red)' }}>
+                  {tx.tipo === 'entrada' ? '+' : '-'}{fmt(tx.valor)}
+                </div>
+                <div className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--blue-bg)', color: 'var(--blue)', whiteSpace: 'nowrap' }}>
+                  {tx.data}
+                </div>
+                {viewMode !== 'casal' && (
+                  <div className="flex gap-1">
+                    <button onClick={() => { setEditingTx(tx); setShowModal(true) }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity border-0 bg-transparent cursor-pointer p-1 rounded"
+                      style={{ color: 'var(--text3)' }}><Edit2 size={13} /></button>
+                    <button onClick={() => deleteTransaction(tx.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity border-0 bg-transparent cursor-pointer p-1 rounded"
+                      style={{ color: 'var(--text3)' }}><Trash2 size={13} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Pie chart */}
       <Card>
