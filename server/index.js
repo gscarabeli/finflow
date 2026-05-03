@@ -48,9 +48,10 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://challenges.cloudflare.com'],
+      frameSrc: ["'self'", 'https://challenges.cloudflare.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", 'https://generativelanguage.googleapis.com'],
+      connectSrc: ["'self'", 'https://generativelanguage.googleapis.com', 'https://challenges.cloudflare.com'],
     },
   },
 }))
