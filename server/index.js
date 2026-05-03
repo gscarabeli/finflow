@@ -64,6 +64,7 @@ async function initDB() {
       expires_at    BIGINT NOT NULL
     );
   `)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT`)
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ function mapUser(row) {
     passwordHash:  row.password_hash,
     emailVerified: row.email_verified,
     coupleId:      row.couple_id,
+    avatar:        row.avatar || null,
     profile:       row.profile || {},
     sonhos:        row.sonhos  || [],
     createdAt:     row.created_at,
@@ -420,13 +422,44 @@ app.post('/api/auth/login', rateLimit(10), async (req, res) => {
     return res.status(403).json({ error: 'E-mail não verificado. Verifique sua caixa de entrada.', code: 'EMAIL_NOT_VERIFIED' })
 
   const token = signJWT({ userId: user.id, email: user.email })
-  return res.json({ token, user: { id: user.id, name: user.name, email: user.email, coupleId: user.coupleId } })
+  return res.json({ token, user: { id: user.id, name: user.name, email: user.email, coupleId: user.coupleId, avatar: user.avatar } })
 })
 
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   const user = await getUserById(req.user.userId)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
-  return res.json({ id: user.id, name: user.name, email: user.email, coupleId: user.coupleId })
+  return res.json({ id: user.id, name: user.name, email: user.email, coupleId: user.coupleId, avatar: user.avatar })
+})
+
+app.put('/api/auth/profile', authMiddleware, async (req, res) => {
+  const { name, email, avatar } = req.body
+  const userId = req.user.userId
+
+  if (!name?.trim()) return res.status(400).json({ error: 'Nome é obrigatório.' })
+  if (!isValidEmail(email)) return res.status(400).json({ error: 'E-mail inválido.' })
+  if (avatar && avatar.length > 700_000) return res.status(400).json({ error: 'Imagem muito grande.' })
+
+  const cleanName  = sanitize(name.trim())
+  const cleanEmail = sanitize(email.trim().toLowerCase())
+
+  const { rows: current } = await pool.query('SELECT email FROM users WHERE id = $1', [userId])
+  if (!current.length) return res.status(404).json({ error: 'Usuário não encontrado.' })
+
+  if (cleanEmail !== current[0].email) {
+    if (!isEmailAllowed(cleanEmail))
+      return res.status(403).json({ error: 'Este e-mail não é permitido.' })
+    const { rows: taken } = await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail])
+    if (taken.length) return res.status(409).json({ error: 'E-mail já em uso.' })
+  }
+
+  await pool.query(
+    'UPDATE users SET name = $1, email = $2, avatar = $3 WHERE id = $4',
+    [cleanName, cleanEmail, avatar ?? null, userId]
+  )
+
+  const { rows: updated } = await pool.query('SELECT * FROM users WHERE id = $1', [userId])
+  const u = mapUser(updated[0])
+  return res.json({ id: u.id, name: u.name, email: u.email, coupleId: u.coupleId, avatar: u.avatar })
 })
 
 app.post('/api/auth/forgot-password', rateLimit(3), honeypot, async (req, res) => {

@@ -13,79 +13,65 @@ if (typeof window !== 'undefined') {
   logSecurityWarnings()
 }
 
-const THEME_VARIANTS = {
-  default: {
-    '--blue': '#16a34a',
-    '--blue2': '#22c55e',
-    '--blue-bg': '#0d2414',
-    '--purple': '#86efac',
-    '--purple-bg': '#0d2414',
-    '--green': '#22c55e',
-    '--green-bg': '#0f2a1a',
-    '--bg': '#08120f',
-    '--bg2': '#0d1a12',
-    '--bg3': '#12221b',
-    '--bg4': '#172a22',
-    '--text': '#e9f7ec',
-    '--text2': '#a3d8b6',
-    '--text3': '#7caf8c',
-    '--border': '#2c4d33',
-    '--border2': '#3f6a46',
-  },
-  larissa: {
-    '--blue': '#ec4899',
-    '--blue2': '#d946ef',
-    '--blue-bg': '#2a122e',
-    '--purple': '#f9a8d4',
-    '--purple-bg': '#2a122e',
-    '--green': '#22c55e',
-    '--green-bg': '#0f2a1a',
-    '--bg': '#130c1a',
-    '--bg2': '#190f24',
-    '--bg3': '#21132f',
-    '--bg4': '#2a173a',
-    '--text': '#f4e6f0',
-    '--text2': '#d7b7cc',
-    '--text3': '#c08fae',
-    '--border': '#4b3350',
-    '--border2': '#6e4d78',
-  },
-  casal: {
-    '--blue': '#0ea5e9',
-    '--blue2': '#38bdf8',
-    '--blue-bg': '#031b2f',
-    '--purple': '#8b5cf6',
-    '--purple-bg': '#11142b',
-    '--green': '#22c55e',
-    '--green-bg': '#04221e',
-    '--bg': '#04131f',
-    '--bg2': '#071923',
-    '--bg3': '#0c2131',
-    '--bg4': '#122a3d',
-    '--text': '#e7f5ff',
-    '--text2': '#9dd4f5',
-    '--text3': '#7aaecd',
-    '--border': '#1b3e57',
-    '--border2': '#2a5b78',
-  },
-  sunset: {
-    '--blue': '#f97316',
-    '--blue2': '#fb923c',
-    '--blue-bg': '#2b1104',
-    '--purple': '#f59e0b',
-    '--purple-bg': '#2b1404',
-    '--green': '#22c55e',
-    '--green-bg': '#142012',
-    '--bg': '#100b05',
-    '--bg2': '#1b1108',
-    '--bg3': '#24150b',
-    '--bg4': '#2f1a0e',
-    '--text': '#fff0db',
-    '--text2': '#f3c9a2',
-    '--text3': '#d99d70',
-    '--border': '#4a2b18',
-    '--border2': '#6b4231',
-  },
+// Maps legacy theme names (stored before hex migration) to their hex equivalents
+const LEGACY_THEME_NAMES = {
+  default: '#16a34a',
+  larissa: '#ec4899',
+  casal:   '#0ea5e9',
+  sunset:  '#f97316',
+}
+
+function hexToHsl(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  if (max === min) return [0, 0, l * 100]
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+  else if (max === g) h = ((b - r) / d + 2) / 6
+  else h = ((r - g) / d + 4) / 6
+  return [h * 360, s * 100, l * 100]
+}
+
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360
+  s = Math.max(0, Math.min(100, s)) / 100
+  l = Math.max(0, Math.min(100, l)) / 100
+  const a = s * Math.min(l, 1 - l)
+  const f = (n) => {
+    const k = (n + h / 30) % 12
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+    return Math.round(255 * color).toString(16).padStart(2, '0')
+  }
+  return `#${f(0)}${f(8)}${f(4)}`
+}
+
+function generateTheme(hex) {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) hex = '#16a34a'
+  const [h, s] = hexToHsl(hex)
+  const sat = Math.max(s, 45)
+  return {
+    '--blue':      hex,
+    '--blue2':     hslToHex(h, Math.min(sat + 8, 100), 68),
+    '--blue-bg':   hslToHex(h, Math.min(sat * 0.7, 70), 8),
+    '--purple':    hslToHex((h + 25) % 360, Math.max(sat - 10, 40), 65),
+    '--purple-bg': hslToHex((h + 25) % 360, Math.min(sat * 0.7, 70), 8),
+    '--green':     '#22c55e',
+    '--green-bg':  '#0f2a1a',
+    '--bg':        hslToHex(h, Math.min(s * 0.3, 20), 4),
+    '--bg2':       hslToHex(h, Math.min(s * 0.3, 20), 6.5),
+    '--bg3':       hslToHex(h, Math.min(s * 0.3, 20), 9),
+    '--bg4':       hslToHex(h, Math.min(s * 0.3, 20), 11),
+    '--text':      hslToHex(h, Math.min(s * 0.1, 12), 92),
+    '--text2':     hslToHex(h, Math.min(s * 0.25, 30), 68),
+    '--text3':     hslToHex(h, Math.min(s * 0.25, 30), 50),
+    '--border':    hslToHex(h, Math.min(s * 0.35, 35), 17),
+    '--border2':   hslToHex(h, Math.min(s * 0.35, 35), 25),
+  }
 }
 
 export default function App() {
@@ -96,9 +82,9 @@ export default function App() {
   }, [initialize])
 
   useEffect(() => {
-    const theme = themeByMode[viewMode] || 'default'
-    const variables = THEME_VARIANTS[theme] || THEME_VARIANTS.default
-    Object.entries(variables).forEach(([key, value]) => {
+    const raw = themeByMode[viewMode] || '#16a34a'
+    const hex = LEGACY_THEME_NAMES[raw] || raw
+    Object.entries(generateTheme(hex)).forEach(([key, value]) => {
       document.documentElement.style.setProperty(key, value)
     })
   }, [viewMode, themeByMode])

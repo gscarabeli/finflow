@@ -157,6 +157,11 @@ export async function apiDeleteConta(id) {
   return apiFetch(`/contas/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
+// ─── User profile ─────────────────────────────────────────────────────────────
+export async function apiUpdateProfile(data) {
+  return apiFetch('/auth/profile', { method: 'PUT', body: JSON.stringify(data) })
+}
+
 // ─── Gemini ───────────────────────────────────────────────────────────────────
 export async function apiLoadGeminiResponse(body) {
   return apiFetch('/gemini', { method: 'POST', body: JSON.stringify(body) })

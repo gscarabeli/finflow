@@ -25,6 +25,7 @@ import {
   apiInvitePartner,
   apiAcceptInvite,
   apiLeaveCouple,
+  apiUpdateProfile,
   saveAuthToken,
   clearAuthTokenLocal,
 } from '../services/apiClient.js'
@@ -56,8 +57,8 @@ export const useStore = create((set, get) => ({
   partnerProfile: null, // só existe se tiver casal
   sonhos: [],
 
-  // Theme
-  themeByMode: loadSecurely(STORAGE_KEYS.THEME, { solo: 'default', casal: 'casal' }, true),
+  // Theme — stores hex colors; legacy theme names ('default','larissa','casal','sunset') are converted in App.jsx
+  themeByMode: loadSecurely(STORAGE_KEYS.THEME, { solo: '#16a34a', casal: '#0ea5e9' }, true),
   apiKey: loadSecurely(STORAGE_KEYS.API_KEY || 'finflow_apikey', '', true),
 
   setTab: (tab) => set({ tab }),
@@ -168,6 +169,14 @@ export const useStore = create((set, get) => ({
     await apiLeaveCouple()
     const me = await apiValidate()
     set({ currentUser: me, partnerProfile: null, viewMode: 'solo' })
+  },
+
+  updateProfile: async ({ name, email, avatar }) => {
+    const user = await apiUpdateProfile({ name, email, avatar })
+    set(s => ({
+      currentUser: user,
+      myProfile: { ...s.myProfile, nome: user.name },
+    }))
   },
 
   // ── getActiveData: retorna dados da view atual ──────────────────────────────
