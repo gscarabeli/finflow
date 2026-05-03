@@ -107,6 +107,7 @@ export default function Login() {
   const [password, setPassword]   = useState('')
   const [password2, setPassword2] = useState('')
   const [resetToken, setResetToken] = useState('')
+  const [hp, setHp] = useState('') // honeypot
 
   // Detect ?verified=true or ?reset=TOKEN in URL
   useEffect(() => {
@@ -159,6 +160,7 @@ export default function Login() {
 
     setLoading(true); setMessage(null)
     try {
+      if (hp) return // honeypot preenchido = bot
       await register(name, email, password)
       setStep('verify-pending')
     } catch (err) {
@@ -176,7 +178,7 @@ export default function Login() {
       const res = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, _hp: hp }),
       })
       const data = await res.json()
       setMessage({ type: 'success', text: data.message })
@@ -195,7 +197,7 @@ export default function Login() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, _hp: hp }),
       })
       const data = await res.json()
       setMessage({ type: 'success', text: data.message })
@@ -330,6 +332,13 @@ export default function Login() {
                 </div>
               )}
 
+              {/* Honeypot — invisível para humanos, bots preenchem */}
+              <input
+                type="text" name="website" value={hp}
+                onChange={e => setHp(e.target.value)}
+                tabIndex={-1} autoComplete="off" aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+              />
               <Button onClick={handleRegister} disabled={loading} className="w-full mb-3">
                 {loading ? <><Loader size={14} className="inline animate-spin mr-2" />Criando conta...</> : 'Criar conta →'}
               </Button>
@@ -386,6 +395,12 @@ export default function Login() {
                 onKeyPress={handleEnter(handleForgot)}
                 className={inputClass} style={inputStyle} autoComplete="email" />
 
+              <input
+                type="text" name="website" value={hp}
+                onChange={e => setHp(e.target.value)}
+                tabIndex={-1} autoComplete="off" aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+              />
               <Button onClick={handleForgot} disabled={loading} className="w-full mb-3">
                 {loading ? <><Loader size={14} className="inline animate-spin mr-2" />Enviando...</> : 'Enviar link →'}
               </Button>

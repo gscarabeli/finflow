@@ -110,25 +110,86 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// ─── Rate limiting simples por IP ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CAMADA 1 — Rate limit por IP (com banimento progressivo)
+// ═══════════════════════════════════════════════════════════════════════════════
 const rateLimitMap = new Map()
+
+function getClientIp(req) {
+  return (
+    req.headers['cf-connecting-ip'] ||
+    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+    req.ip
+  )
+}
+
 function rateLimit(maxRequests = 5, windowMs = 15 * 60 * 1000) {
   return (req, res, next) => {
-    const key = req.ip
+    const ip = getClientIp(req)
+    const key = `${ip}:${req.path}`
     const now = Date.now()
-    const entry = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs }
+    const entry = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs, strikes: 0 }
+
     if (now > entry.resetAt) {
       entry.count = 0
       entry.resetAt = now + windowMs
     }
+
     entry.count++
     rateLimitMap.set(key, entry)
+
     if (entry.count > maxRequests) {
-      const minutes = Math.ceil((entry.resetAt - now) / 60000)
+      entry.strikes = (entry.strikes || 0) + 1
+      const penaltyMs = windowMs * Math.min(entry.strikes, 8)
+      entry.resetAt = now + penaltyMs
+      rateLimitMap.set(key, entry)
+      const minutes = Math.ceil(penaltyMs / 60000)
       return res.status(429).json({ error: `Muitas tentativas. Tente novamente em ${minutes} minuto(s).` })
     }
+
     next()
   }
+}
+
+// Limpa entradas antigas da memória a cada hora
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, entry] of rateLimitMap.entries()) {
+    if (now > entry.resetAt + 60 * 60 * 1000) rateLimitMap.delete(key)
+  }
+}, 60 * 60 * 1000)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CAMADA 2 — Cooldown por e-mail (1 e-mail por minuto por endereço)
+// ═══════════════════════════════════════════════════════════════════════════════
+const emailCooldownMap = new Map()
+
+function isEmailOnCooldown(email, cooldownMs = 60 * 1000) {
+  const lastSent = emailCooldownMap.get(email.toLowerCase())
+  return lastSent && Date.now() - lastSent < cooldownMs
+}
+
+function markEmailSent(email) {
+  emailCooldownMap.set(email.toLowerCase(), Date.now())
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60 * 1000
+  for (const [key, ts] of emailCooldownMap.entries()) {
+    if (ts < cutoff) emailCooldownMap.delete(key)
+  }
+}, 10 * 60 * 1000)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CAMADA 3 — Honeypot (campo invisível; se preenchido = bot)
+// ═══════════════════════════════════════════════════════════════════════════════
+function honeypot(req, res, next) {
+  const trap = req.body?._hp
+  if (trap !== undefined && trap !== '') {
+    // Simula sucesso para não alertar o bot
+    return res.status(200).json({ message: 'ok' })
+  }
+  next()
 }
 
 // ─── Sanitize ─────────────────────────────────────────────────────────────────
@@ -195,7 +256,7 @@ function emptyProfile(name) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/auth/register
-app.post('/api/auth/register', rateLimit(5), async (req, res) => {
+app.post('/api/auth/register', rateLimit(3), honeypot, async (req, res) => {
   const { name, email, password } = req.body
 
   if (!name || !email || !password) {
@@ -215,9 +276,13 @@ app.post('/api/auth/register', rateLimit(5), async (req, res) => {
     return res.status(409).json({ error: 'E-mail já cadastrado' })
   }
 
+  if (isEmailOnCooldown(normalizedEmail)) {
+    return res.status(429).json({ error: 'Aguarde 1 minuto antes de tentar novamente.' })
+  }
+
   const userId = `u${Date.now()}`
   const verificationToken = generateToken()
-  const verificationExpiry = Date.now() + 24 * 60 * 60 * 1000 // 24h
+  const verificationExpiry = Date.now() + 24 * 60 * 60 * 1000
 
   state.users[userId] = {
     id: userId,
@@ -237,7 +302,6 @@ app.post('/api/auth/register', rateLimit(5), async (req, res) => {
 
   await saveState(state)
 
-  // Enviar e-mail de verificação
   const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${verificationToken}`
   try {
     await resend.emails.send({
@@ -246,9 +310,9 @@ app.post('/api/auth/register', rateLimit(5), async (req, res) => {
       subject: 'Confirme seu e-mail — FinFlow',
       html: emailVerificationTemplate(sanitize(name), verifyUrl),
     })
+    markEmailSent(normalizedEmail)
   } catch (err) {
     console.error('Erro ao enviar e-mail de verificação:', err)
-    // Não falha o registro, mas loga o erro
   }
 
   return res.status(201).json({ message: 'Conta criada! Verifique seu e-mail para ativar.' })
@@ -278,19 +342,23 @@ app.get('/api/auth/verify-email', async (req, res) => {
 })
 
 // POST /api/auth/resend-verification
-app.post('/api/auth/resend-verification', rateLimit(3), async (req, res) => {
+app.post('/api/auth/resend-verification', rateLimit(3), honeypot, async (req, res) => {
   const { email } = req.body
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório' })
 
-  const state = await loadState()
-  const user = Object.values(state.users).find(u => u.email === email.toLowerCase().trim())
+  const normalizedEmail = email.toLowerCase().trim()
 
-  // Responde genérico para não vazar se e-mail existe
+  if (isEmailOnCooldown(normalizedEmail)) {
+    return res.status(429).json({ error: 'Aguarde 1 minuto antes de solicitar outro e-mail.' })
+  }
+
+  const state = await loadState()
+  const user = Object.values(state.users).find(u => u.email === normalizedEmail)
+
   if (!user || user.emailVerified) {
     return res.json({ message: 'Se o e-mail existir e não estiver verificado, você receberá um novo link.' })
   }
 
-  // Remove tokens antigos deste usuário
   for (const [t, v] of Object.entries(state.pendingVerifications)) {
     if (v.userId === user.id) delete state.pendingVerifications[t]
   }
@@ -306,6 +374,7 @@ app.post('/api/auth/resend-verification', rateLimit(3), async (req, res) => {
     subject: 'Novo link de verificação — FinFlow',
     html: emailVerificationTemplate(user.name, verifyUrl),
   })
+  markEmailSent(normalizedEmail)
 
   return res.json({ message: 'Se o e-mail existir e não estiver verificado, você receberá um novo link.' })
 })
@@ -339,23 +408,27 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 })
 
 // POST /api/auth/forgot-password
-app.post('/api/auth/forgot-password', rateLimit(3), async (req, res) => {
+app.post('/api/auth/forgot-password', rateLimit(3), honeypot, async (req, res) => {
   const { email } = req.body
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório' })
 
-  const state = await loadState()
-  const user = Object.values(state.users).find(u => u.email === email.toLowerCase().trim())
+  const normalizedEmail = email.toLowerCase().trim()
 
-  // Sempre responde genérico para não vazar info
+  if (isEmailOnCooldown(normalizedEmail)) {
+    return res.status(429).json({ error: 'Aguarde 1 minuto antes de solicitar outro e-mail.' })
+  }
+
+  const state = await loadState()
+  const user = Object.values(state.users).find(u => u.email === normalizedEmail)
+
   if (!user) return res.json({ message: 'Se o e-mail estiver cadastrado, você receberá as instruções.' })
 
-  // Remove resets antigos deste usuário
   for (const [t, v] of Object.entries(state.pendingResets)) {
     if (v.userId === user.id) delete state.pendingResets[t]
   }
 
   const token = generateToken()
-  state.pendingResets[token] = { userId: user.id, expiresAt: Date.now() + 60 * 60 * 1000 } // 1h
+  state.pendingResets[token] = { userId: user.id, expiresAt: Date.now() + 60 * 60 * 1000 }
   await saveState(state)
 
   const resetUrl = `${APP_URL}/?reset=${token}`
@@ -365,6 +438,7 @@ app.post('/api/auth/forgot-password', rateLimit(3), async (req, res) => {
     subject: 'Redefinir senha — FinFlow',
     html: passwordResetTemplate(user.name, resetUrl),
   })
+  markEmailSent(normalizedEmail)
 
   return res.json({ message: 'Se o e-mail estiver cadastrado, você receberá as instruções.' })
 })
@@ -414,9 +488,13 @@ app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/couple/invite — convida parceiro por e-mail
-app.post('/api/couple/invite', authMiddleware, rateLimit(3), async (req, res) => {
+app.post('/api/couple/invite', authMiddleware, rateLimit(3), honeypot, async (req, res) => {
   const { partnerEmail } = req.body
   if (!partnerEmail || !isValidEmail(partnerEmail)) return res.status(400).json({ error: 'E-mail do parceiro inválido' })
+
+  if (isEmailOnCooldown(partnerEmail)) {
+    return res.status(429).json({ error: 'Aguarde 1 minuto antes de enviar outro convite.' })
+  }
 
   const state = await loadState()
   const inviter = state.users[req.user.userId]
@@ -452,6 +530,7 @@ app.post('/api/couple/invite', authMiddleware, rateLimit(3), async (req, res) =>
     subject: `${inviter.name} te convidou para o FinFlow 💑`,
     html: coupleInviteTemplate(inviter.name, partnerName, inviteUrl),
   })
+  markEmailSent(partnerEmail)
 
   return res.json({ message: 'Convite enviado!' })
 })
