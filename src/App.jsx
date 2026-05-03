@@ -89,19 +89,19 @@ const THEME_VARIANTS = {
 }
 
 export default function App() {
-  const { tab, profile, themeByProfile, authenticated, initialized, initialize } = useStore()
+  const { tab, viewMode, themeByMode, authenticated, initialized, initialize } = useStore()
 
   useEffect(() => {
     initialize()
   }, [initialize])
 
   useEffect(() => {
-    const theme = themeByProfile[profile] || 'default'
+    const theme = themeByMode[viewMode] || 'default'
     const variables = THEME_VARIANTS[theme] || THEME_VARIANTS.default
     Object.entries(variables).forEach(([key, value]) => {
       document.documentElement.style.setProperty(key, value)
     })
-  }, [profile, themeByProfile])
+  }, [viewMode, themeByMode])
 
   if (!initialized) {
     return null
