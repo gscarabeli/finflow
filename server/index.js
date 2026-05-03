@@ -22,8 +22,22 @@ const CLIENT_DIST = resolve(__dirname, '..', 'dist')
 const RESEND_API_KEY = process.env.RESEND_API_KEY || ''
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`
 const FROM_EMAIL = 'FinFlow <onboarding@resend.dev>'
+const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET_KEY || ''
 
 const resend = new Resend(RESEND_API_KEY)
+
+// ─── Turnstile verification ───────────────────────────────────────────────────
+async function verifyTurnstile(token) {
+  if (!TURNSTILE_SECRET) return // skip when not configured
+  if (!token) throw Object.assign(new Error('Verificação de segurança necessária'), { status: 400 })
+  const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ secret: TURNSTILE_SECRET, response: token }),
+  })
+  const data = await res.json()
+  if (!data.success) throw Object.assign(new Error('Verificação de segurança falhou. Tente novamente.'), { status: 400 })
+}
 
 // ─── Express setup ────────────────────────────────────────────────────────────
 const app = express()
@@ -257,7 +271,8 @@ function emptyProfile(name) {
 
 // POST /api/auth/register
 app.post('/api/auth/register', rateLimit(3), honeypot, async (req, res) => {
-  const { name, email, password } = req.body
+  const { name, email, password, cfToken } = req.body
+  try { await verifyTurnstile(cfToken) } catch (e) { return res.status(e.status || 400).json({ error: e.message }) }
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' })
@@ -381,8 +396,9 @@ app.post('/api/auth/resend-verification', rateLimit(3), honeypot, async (req, re
 
 // POST /api/auth/login
 app.post('/api/auth/login', rateLimit(10), async (req, res) => {
-  const { email, password } = req.body
+  const { email, password, cfToken } = req.body
   if (!email || !password) return res.status(400).json({ error: 'E-mail e senha obrigatórios' })
+  try { await verifyTurnstile(cfToken) } catch (e) { return res.status(e.status || 400).json({ error: e.message }) }
 
   const state = await loadState()
   const user = Object.values(state.users).find(u => u.email === email.toLowerCase().trim())
@@ -409,8 +425,9 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 
 // POST /api/auth/forgot-password
 app.post('/api/auth/forgot-password', rateLimit(3), honeypot, async (req, res) => {
-  const { email } = req.body
+  const { email, cfToken } = req.body
   if (!email) return res.status(400).json({ error: 'E-mail obrigatório' })
+  try { await verifyTurnstile(cfToken) } catch (e) { return res.status(e.status || 400).json({ error: e.message }) }
 
   const normalizedEmail = email.toLowerCase().trim()
 

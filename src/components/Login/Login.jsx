@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Eye, EyeOff, CheckCircle, XCircle, Loader } from 'lucide-react'
+import { Turnstile } from '@marsidev/react-turnstile'
 import { useStore } from '../../store/useStore.js'
+import { apiForgotPassword } from '../../services/apiClient.js'
 import { Card, Button } from '../shared/UI.jsx'
+
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
 
 // ─── Password strength checker ────────────────────────────────────────────────
 const PASSWORD_RULES = [
@@ -108,6 +112,8 @@ export default function Login() {
   const [password2, setPassword2] = useState('')
   const [resetToken, setResetToken] = useState('')
   const [hp, setHp] = useState('') // honeypot
+  const [cfToken, setCfToken] = useState('')
+  const turnstileRef = useRef(null)
 
   const [hasInvite, setHasInvite] = useState(false)
 
@@ -134,7 +140,8 @@ export default function Login() {
 
   function reset() {
     setName(''); setEmail(''); setPassword(''); setPassword2('')
-    setMessage(null)
+    setMessage(null); setCfToken('')
+    turnstileRef.current?.reset()
   }
 
   function goTo(s) { reset(); setStep(s) }
@@ -146,15 +153,14 @@ export default function Login() {
     if (!email || !password) return setMessage({ type: 'error', text: 'Preencha todos os campos' })
     setLoading(true); setMessage(null)
     try {
-      await login(email, password)
-      // useStore.login vai setar authenticated = true e o app redireciona
+      await login(email, password, cfToken)
     } catch (err) {
       if (err.code === 'EMAIL_NOT_VERIFIED') {
         setMessage({ type: 'error', text: 'E-mail não verificado. Verifique sua caixa de entrada ou reenvie o link.' })
       } else {
         setMessage({ type: 'error', text: err.message || 'E-mail ou senha incorretos' })
       }
-      setPassword('')
+      setPassword(''); setCfToken(''); turnstileRef.current?.reset()
     } finally {
       setLoading(false)
     }
@@ -170,10 +176,11 @@ export default function Login() {
     setLoading(true); setMessage(null)
     try {
       if (hp) return // honeypot preenchido = bot
-      await register(name, email, password)
+      await register(name, email, password, cfToken)
       setStep('verify-pending')
     } catch (err) {
       setMessage({ type: 'error', text: err.message || 'Erro ao criar conta' })
+      setCfToken(''); turnstileRef.current?.reset()
     } finally {
       setLoading(false)
     }
@@ -203,16 +210,12 @@ export default function Login() {
     if (!email) return setMessage({ type: 'error', text: 'Informe seu e-mail' })
     setLoading(true); setMessage(null)
     try {
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, _hp: hp }),
-      })
-      const data = await res.json()
+      const data = await apiForgotPassword(email, cfToken)
       setMessage({ type: 'success', text: data.message })
       setStep('forgot-sent')
-    } catch {
-      setMessage({ type: 'error', text: 'Erro ao enviar. Tente novamente.' })
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Erro ao enviar. Tente novamente.' })
+      setCfToken(''); turnstileRef.current?.reset()
     } finally {
       setLoading(false)
     }
@@ -301,7 +304,15 @@ export default function Login() {
                 </button>
               </div>
 
-              <Button onClick={handleLogin} disabled={loading} className="w-full mb-3">
+              {TURNSTILE_SITE_KEY && (
+                <div className="mb-3 flex justify-center">
+                  <Turnstile ref={turnstileRef} siteKey={TURNSTILE_SITE_KEY}
+                    onSuccess={setCfToken} onError={() => setCfToken('')} onExpire={() => setCfToken('')}
+                    options={{ theme: 'dark', size: 'flexible' }} />
+                </div>
+              )}
+
+              <Button onClick={handleLogin} disabled={loading || (!!TURNSTILE_SITE_KEY && !cfToken)} className="w-full mb-3">
                 {loading ? <><Loader size={14} className="inline animate-spin mr-2" />Entrando...</> : 'Entrar →'}
               </Button>
 
@@ -355,7 +366,16 @@ export default function Login() {
                 tabIndex={-1} autoComplete="off" aria-hidden="true"
                 style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
               />
-              <Button onClick={handleRegister} disabled={loading} className="w-full mb-3">
+
+              {TURNSTILE_SITE_KEY && (
+                <div className="mb-3 flex justify-center">
+                  <Turnstile ref={turnstileRef} siteKey={TURNSTILE_SITE_KEY}
+                    onSuccess={setCfToken} onError={() => setCfToken('')} onExpire={() => setCfToken('')}
+                    options={{ theme: 'dark', size: 'flexible' }} />
+                </div>
+              )}
+
+              <Button onClick={handleRegister} disabled={loading || (!!TURNSTILE_SITE_KEY && !cfToken)} className="w-full mb-3">
                 {loading ? <><Loader size={14} className="inline animate-spin mr-2" />Criando conta...</> : 'Criar conta →'}
               </Button>
 
@@ -417,7 +437,16 @@ export default function Login() {
                 tabIndex={-1} autoComplete="off" aria-hidden="true"
                 style={{ position: 'absolute', left: '-9999px', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
               />
-              <Button onClick={handleForgot} disabled={loading} className="w-full mb-3">
+
+              {TURNSTILE_SITE_KEY && (
+                <div className="mb-3 flex justify-center">
+                  <Turnstile ref={turnstileRef} siteKey={TURNSTILE_SITE_KEY}
+                    onSuccess={setCfToken} onError={() => setCfToken('')} onExpire={() => setCfToken('')}
+                    options={{ theme: 'dark', size: 'flexible' }} />
+                </div>
+              )}
+
+              <Button onClick={handleForgot} disabled={loading || (!!TURNSTILE_SITE_KEY && !cfToken)} className="w-full mb-3">
                 {loading ? <><Loader size={14} className="inline animate-spin mr-2" />Enviando...</> : 'Enviar link →'}
               </Button>
 

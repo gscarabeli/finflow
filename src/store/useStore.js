@@ -107,14 +107,14 @@ export const useStore = create((set, get) => ({
   },
 
   // ── Register ────────────────────────────────────────────────────────────────
-  register: async (name, email, password) => {
-    await apiRegister(name, email, password)
+  register: async (name, email, password, cfToken) => {
+    await apiRegister(name, email, password, cfToken)
     // Não faz login automático — usuário precisa verificar e-mail
   },
 
   // ── Login ───────────────────────────────────────────────────────────────────
-  login: async (email, password) => {
-    const response = await apiLogin(email, password)
+  login: async (email, password, cfToken) => {
+    const response = await apiLogin(email, password, cfToken)
     const { token, user } = response
 
     saveAuthToken(token)

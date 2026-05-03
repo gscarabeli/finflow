@@ -35,17 +35,17 @@ async function apiFetch(path, options = {}) {
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-export async function apiRegister(name, email, password) {
+export async function apiRegister(name, email, password, cfToken) {
   return apiFetch('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ name, email, password }),
+    body: JSON.stringify({ name, email, password, cfToken }),
   })
 }
 
-export async function apiLogin(email, password) {
+export async function apiLogin(email, password, cfToken) {
   return apiFetch('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, cfToken }),
   })
 }
 
@@ -60,10 +60,10 @@ export async function apiResendVerification(email) {
   })
 }
 
-export async function apiForgotPassword(email) {
+export async function apiForgotPassword(email, cfToken) {
   return apiFetch('/auth/forgot-password', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, cfToken }),
   })
 }
 
