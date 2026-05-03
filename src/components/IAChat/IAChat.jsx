@@ -405,16 +405,19 @@ export default function IAChat() {
                 : <ChevronDown size={13} style={{ color: 'var(--text3)' }} />}
             </button>
 
-            {contextOpen && (
+            {contextOpen && (() => {
+              const META_KEYS = new Set(['mes', 'sonhos_do_casal'])
+              const profileEntries = Object.entries(ctx).filter(([k]) => !META_KEYS.has(k))
+              const statRows = profileEntries.flatMap(([name, data]) => [
+                { label: `${name} - Entradas`, val: fmt(data.entradas), color: 'var(--green)' },
+                { label: `${name} - Saídas`, val: fmt(data.saidas), color: 'var(--red)' },
+              ])
+              const totalPatrimonio = profileEntries.reduce((sum, [, d]) => sum + (d.investimentos?.total ?? 0), 0)
+              statRows.push({ label: 'Patrimônio Total', val: fmt(totalPatrimonio), color: 'var(--purple)' })
+              return (
               <>
                 <div className="flex flex-col gap-3 mt-4">
-                  {[
-                    { label: 'Gustavo - Entradas', val: fmt(ctx.Gustavo.entradas), color: 'var(--green)' },
-                    { label: 'Gustavo - Saídas', val: fmt(ctx.Gustavo.saidas), color: 'var(--red)' },
-                    { label: 'Larissa - Entradas', val: fmt(ctx.Larissa.entradas), color: 'var(--green)' },
-                    { label: 'Larissa - Saídas', val: fmt(ctx.Larissa.saidas), color: 'var(--red)' },
-                    { label: 'Patrimônio Total', val: fmt(ctx.Gustavo.investimentos.total + ctx.Larissa.investimentos.total), color: 'var(--purple)' },
-                  ].map(({ label, val, color }) => (
+                  {statRows.map(({ label, val, color }) => (
                     <div key={label} className="flex items-center justify-between">
                       <span className="text-xs" style={{ color: 'var(--text3)' }}>{label}</span>
                       <span className="text-xs font-semibold font-mono" style={{ color }}>{val}</span>
@@ -435,7 +438,8 @@ export default function IAChat() {
                   ))}
                 </div>
               </>
-            )}
+              )
+            })()}
           </Card>
 
           {/* JSON completo */}
