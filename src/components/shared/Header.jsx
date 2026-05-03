@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { UserPlus, Loader } from 'lucide-react'
+import { UserPlus, Loader, Calculator, Delete } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { Modal, Input, Button } from './UI.jsx'
 
@@ -291,6 +291,157 @@ function InviteModal({ open, onClose }) {
   )
 }
 
+// ─── CalculatorWidget ─────────────────────────────────────────────────────────
+const CALC_BTNS = [
+  ['7', '8', '9', '÷'],
+  ['4', '5', '6', '×'],
+  ['1', '2', '3', '-'],
+  ['0', '.', '=', '+'],
+]
+
+function calcBtnStyle(v) {
+  const isOp  = ['+', '-', '×', '÷'].includes(v)
+  const isEq  = v === '='
+  const isDel = ['C', '←'].includes(v)
+  return {
+    background: isEq ? 'var(--blue)' : isOp ? 'var(--blue-bg)' : isDel ? 'var(--bg)' : 'var(--bg4)',
+    color: isEq ? '#fff' : isOp ? 'var(--blue)' : 'var(--text)',
+    border: '1px solid var(--border)',
+    borderRadius: 8, cursor: 'pointer',
+    fontSize: 13, fontWeight: 600,
+    padding: '9px 4px', transition: 'filter 0.1s',
+    lineHeight: 1,
+  }
+}
+
+function safeEval(expr) {
+  const safe = expr.replace(/×/g, '*').replace(/÷/g, '/')
+  if (!/^[\d\s+\-*/.]+$/.test(safe)) return null
+  try {
+    // eslint-disable-next-line no-new-func
+    const res = Function('"use strict"; return (' + safe + ')')()
+    return Number.isFinite(res) ? parseFloat(res.toFixed(10)).toString() : null
+  } catch { return null }
+}
+
+function CalculatorWidget() {
+  const [open, setOpen] = useState(false)
+  const [expr, setExpr] = useState('')
+  const [preview, setPreview] = useState('')
+  const [justEval, setJustEval] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  function press(val) {
+    if (val === 'C') {
+      setExpr(''); setPreview(''); setJustEval(false)
+      return
+    }
+    if (val === '←') {
+      if (justEval) { setExpr(''); setPreview(''); setJustEval(false); return }
+      const next = expr.slice(0, -1)
+      setExpr(next); setPreview(''); setJustEval(false)
+      return
+    }
+    if (val === '=') {
+      if (!expr) return
+      const res = safeEval(expr)
+      if (res !== null) { setPreview(res); setExpr(res); setJustEval(true) }
+      else { setPreview('Erro'); setJustEval(true) }
+      return
+    }
+
+    const isOp = ['+', '-', '×', '÷'].includes(val)
+    if (justEval && !isOp) {
+      setExpr(val); setPreview(''); setJustEval(false)
+      return
+    }
+    const next = (justEval && isOp ? expr : expr) + val
+    setExpr(justEval ? expr + val : expr + val)
+    setPreview('')
+    setJustEval(false)
+  }
+
+  const displayMain  = preview || expr || '0'
+  const displaySub   = preview && expr !== preview ? expr : ''
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Calculadora"
+        style={{
+          background: open ? 'var(--blue-bg)' : 'none',
+          border: open ? '1px solid var(--border2)' : '1px solid transparent',
+          cursor: 'pointer', padding: '4px 6px', borderRadius: 8,
+          color: open ? 'var(--blue)' : 'var(--text3)',
+          display: 'flex', alignItems: 'center',
+        }}
+      >
+        <Calculator size={16} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 200,
+          background: 'var(--bg3)', border: '1px solid var(--border)',
+          borderRadius: 14, padding: 12, width: 212,
+          boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
+        }}>
+          {/* Display */}
+          <div style={{
+            background: 'var(--bg)', borderRadius: 8, padding: '8px 12px',
+            marginBottom: 10, minHeight: 56, textAlign: 'right',
+            border: '1px solid var(--border)', overflow: 'hidden',
+          }}>
+            {displaySub && (
+              <div style={{ fontSize: 10, color: 'var(--text3)', wordBreak: 'break-all', marginBottom: 2 }}>
+                {displaySub}
+              </div>
+            )}
+            <div style={{
+              fontSize: preview ? 22 : 15, fontWeight: 700, wordBreak: 'break-all',
+              color: preview ? 'var(--blue)' : 'var(--text)', lineHeight: 1.2,
+            }}>
+              {displayMain}
+            </div>
+          </div>
+
+          {/* C + ← */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 5 }}>
+            {['C', '←'].map(v => (
+              <button key={v} onClick={() => press(v)} style={calcBtnStyle(v)}
+                onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.15)'}
+                onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
+                {v === '←' ? <Delete size={13} style={{ margin: 'auto' }} /> : v}
+              </button>
+            ))}
+          </div>
+
+          {/* Digit + operator grid */}
+          {CALC_BTNS.map((row, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5, marginBottom: 5 }}>
+              {row.map(v => (
+                <button key={v} onClick={() => press(v)} style={calcBtnStyle(v)}
+                  onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.15)'}
+                  onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
+                  {v}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Header ───────────────────────────────────────────────────────────────────
 export default function Header() {
   const { tab, viewMode, themeByMode, setTab, setViewMode, setTheme, authenticated, logout, partnerProfile, currentUser } = useStore()
@@ -356,6 +507,9 @@ export default function Header() {
         )}
 
         <div className="h-6 border-l border-gray-500/30 mx-1 hidden sm:block" />
+
+        {/* Calculator */}
+        <CalculatorWidget />
 
         {/* Color picker */}
         <ColorPicker
