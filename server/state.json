@@ -1,38 +1,7 @@
 {
-  "auth": {
-    "passwordHash": "99c75e8a8f37e69ebc172397cd0cd74c:2361a8eb43a89d98a229dfbd19f2b01ab8ce24a11af1ee81edd60b61267fa2047c1b5e8ab341f00ffaf20efed94e2ae2fffc52d9aa0f11c71ae1c08ce8e56d95"
-  },
-  "profiles": {
-    "eu": {
-      "nome": "Gustavo",
-      "contas": [],
-      "investimentos": {
-        "reserva": {
-          "atual": 0,
-          "meta": 0
-        },
-        "previdencia": 0,
-        "acoes": 0,
-        "fundos": 0,
-        "cdi": 0
-      },
-      "transacoes": []
-    },
-    "ela": {
-      "nome": "Larissa",
-      "contas": [],
-      "investimentos": {
-        "reserva": {
-          "atual": 0,
-          "meta": 0
-        },
-        "previdencia": 0,
-        "acoes": 0,
-        "fundos": 0,
-        "cdi": 0
-      },
-      "transacoes": []
-    }
-  },
-  "sonhos": []
+  "users": {},
+  "couples": {},
+  "pendingVerifications": {},
+  "pendingResets": {},
+  "pendingInvites": {}
 }

@@ -1,13 +1,12 @@
 import { create } from 'zustand'
 import {
-  sanitizeInput,
-  RateLimiter,
   loadSecurely,
   saveSecurely,
   clearSensitiveData,
   STORAGE_KEYS,
 } from '../hooks/useSecurity.js'
 import {
+  apiRegister,
   apiLogin,
   apiValidate,
   apiLoadProfileData,
@@ -23,79 +22,63 @@ import {
   apiCreateConta,
   apiUpdateConta,
   apiDeleteConta,
+  apiInvitePartner,
+  apiAcceptInvite,
+  apiLeaveCouple,
+  saveAuthToken,
+  clearAuthTokenLocal,
 } from '../services/apiClient.js'
 
-const loginLimiter = new RateLimiter(5, 15 * 60 * 1000)
-
-function loadLS(key, fallback, persistent = false) {
-  return loadSecurely(key, fallback, persistent)
-}
-
-function saveLS(key, val, persistent = false) {
-  saveSecurely(key, val, persistent)
-}
-
+// ─── Empty structures ─────────────────────────────────────────────────────────
 const EMPTY_PROFILE = {
   nome: '',
   contas: [],
-  investimentos: {
-    reserva: { atual: 0, meta: 0 },
-    previdencia: 0,
-    acoes: 0,
-    fundos: 0,
-    cdi: 0,
-  },
+  investimentos: { reserva: { atual: 0, meta: 0 }, previdencia: 0, acoes: 0, fundos: 0, cdi: 0 },
   transacoes: [],
 }
 
+// ─── Store ────────────────────────────────────────────────────────────────────
 export const useStore = create((set, get) => ({
-  profile: 'eu',
+  // Auth
+  authenticated: false,
+  authToken: null,
+  currentUser: null, // { id, name, email, coupleId }
+
+  // View
+  // 'solo' = apenas o próprio perfil
+  // 'casal' = visão consolidada com parceiro
+  viewMode: 'solo',
   tab: 'dashboard',
   initialized: false,
 
-  profiles: {
-    eu: { ...EMPTY_PROFILE, nome: 'Gustavo' },
-    ela: { ...EMPTY_PROFILE, nome: 'Larissa' },
-  },
-
+  // Data
+  myProfile: { ...EMPTY_PROFILE },
+  partnerProfile: null, // só existe se tiver casal
   sonhos: [],
 
-  authToken: loadLS(STORAGE_KEYS.AUTH_TOKEN, null, false),
-  authenticated: Boolean(loadLS(STORAGE_KEYS.AUTH_TOKEN, null, false)),
-  authProfile: loadLS(STORAGE_KEYS.AUTH_PROFILE, 'eu', false),
-  themeByProfile: loadLS(STORAGE_KEYS.THEME, { eu: 'default', ela: 'larissa', casal: 'casal' }, true),
+  // Theme
+  themeByMode: loadSecurely(STORAGE_KEYS.THEME, { solo: 'default', casal: 'casal' }, true),
+  apiKey: loadSecurely(STORAGE_KEYS.API_KEY || 'finflow_apikey', '', true),
 
-  setProfile: async (profile) => {
-    // Para o casal, sempre recarrega pois precisa dos dois perfis
-    if (profile !== 'casal' && get().profiles[profile]?.transacoes) {
-      set({ profile })
-      saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
-      return
-    }
-
-    try {
-      const appData = await apiLoadProfileData(profile)
-      const sonhos = await apiLoadSonhos()
-
-      const profiles = { ...get().profiles }
-      if (profile === 'casal') {
-        profiles.eu = appData.eu ?? { ...EMPTY_PROFILE, nome: 'Gustavo' }
-        profiles.ela = appData.ela ?? { ...EMPTY_PROFILE, nome: 'Larissa' }
-      } else {
-        profiles[profile] = appData[profile] ?? EMPTY_PROFILE
-      }
-
-      set({ profile, authProfile: profile, profiles, sonhos })
-      saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
-    } catch (error) {
-      console.error('Erro ao carregar dados do perfil:', error)
-      throw error
-    }
-  },
   setTab: (tab) => set({ tab }),
 
+  setApiKey: (apiKey) => {
+    saveSecurely(STORAGE_KEYS.API_KEY || 'finflow_apikey', apiKey, true)
+    set({ apiKey })
+  },
+
+  setTheme: (theme) => {
+    const { viewMode, themeByMode } = get()
+    const updated = { ...themeByMode, [viewMode]: theme }
+    saveSecurely(STORAGE_KEYS.THEME, updated, true)
+    set({ themeByMode: updated })
+  },
+
+  setViewMode: (mode) => set({ viewMode: mode }),
+
+  // ── Initialize (called on app mount) ───────────────────────────────────────
   initialize: async () => {
-    const token = loadLS(STORAGE_KEYS.AUTH_TOKEN, null, false)
+    const token = loadSecurely(STORAGE_KEYS.AUTH_TOKEN, null, false)
     if (!token) {
       set({ initialized: true })
       return
@@ -103,313 +86,210 @@ export const useStore = create((set, get) => ({
 
     try {
       const me = await apiValidate()
-      const profile = me.profile
-      const appData = await apiLoadProfileData(profile)
+      const profileData = await apiLoadProfileData()
       const sonhos = await apiLoadSonhos()
-
-      const profiles = { ...get().profiles }
-      if (profile === 'casal') {
-        profiles.eu = appData.eu
-        profiles.ela = appData.ela
-      } else {
-        profiles[profile] = appData[profile]
-      }
 
       set({
         authenticated: true,
         authToken: token,
-        authProfile: profile,
-        profile,
-        profiles,
+        currentUser: me,
+        myProfile: profileData.eu ?? { ...EMPTY_PROFILE, nome: me.name },
+        partnerProfile: profileData.parceiro ?? null,
         sonhos,
+        viewMode: me.coupleId ? 'solo' : 'solo',
       })
     } catch {
       clearSensitiveData()
-      set({ authenticated: false, authToken: null, profile: 'eu' })
+      set({ authenticated: false, authToken: null, currentUser: null })
     } finally {
       set({ initialized: true })
     }
   },
 
-  login: async (profile, password) => {
-    const limit = loginLimiter.checkLimit(profile || 'general')
-    if (!limit.allowed) {
-      const minutes = Math.ceil(limit.resetIn / 60000)
-      throw new Error(`Muitas tentativas de login. Tente novamente em ${minutes} minuto(s).`)
-    }
+  // ── Register ────────────────────────────────────────────────────────────────
+  register: async (name, email, password) => {
+    await apiRegister(name, email, password)
+    // Não faz login automático — usuário precisa verificar e-mail
+  },
 
-    const sanitizedPassword = sanitizeInput(password)
-    if (sanitizedPassword !== password) {
-      throw new Error('Entrada contém caracteres inválidos')
-    }
+  // ── Login ───────────────────────────────────────────────────────────────────
+  login: async (email, password) => {
+    const response = await apiLogin(email, password)
+    const { token, user } = response
 
-    // Se profile for null, apenas valida a senha sem carregar dados específicos
-    if (profile === null) {
-      const response = await apiLogin('eu', password) // Usa 'eu' como referência para validação
-      const { token } = response
-      saveLS(STORAGE_KEYS.AUTH_TOKEN, token, false)
-      // Não salva authProfile ainda - será definido na seleção de perfil
-      set({
-        authenticated: true,
-        authToken: token,
-        // Não define profile ainda
-      })
-      loginLimiter.reset('general')
-      return true
-    }
+    saveAuthToken(token)
 
-    // Se profile foi especificado, carrega os dados normalmente
-    const response = await apiLogin(profile, password)
-    const { token } = response
-    saveLS(STORAGE_KEYS.AUTH_TOKEN, token, false)
-    saveLS(STORAGE_KEYS.AUTH_PROFILE, profile, false)
-
-    const appData = await apiLoadProfileData(profile)
+    const profileData = await apiLoadProfileData()
     const sonhos = await apiLoadSonhos()
-
-    const profiles = { ...get().profiles }
-    if (profile === 'casal') {
-      profiles.eu = appData.eu
-      profiles.ela = appData.ela
-    } else {
-      profiles[profile] = appData[profile]
-    }
 
     set({
       authenticated: true,
       authToken: token,
-      authProfile: profile,
-      profile,
-      profiles,
+      currentUser: user,
+      myProfile: profileData.eu ?? { ...EMPTY_PROFILE, nome: user.name },
+      partnerProfile: profileData.parceiro ?? null,
       sonhos,
+      viewMode: 'solo',
     })
-
-    loginLimiter.reset(profile)
-    return true
   },
 
+  // ── Logout ──────────────────────────────────────────────────────────────────
   logout: () => {
     clearSensitiveData()
+    clearAuthTokenLocal()
     set({
       authenticated: false,
       authToken: null,
-      profile: 'eu',
-      profiles: {
-        eu: { ...EMPTY_PROFILE, nome: 'Gustavo' },
-        ela: { ...EMPTY_PROFILE, nome: 'Larissa' },
-      },
+      currentUser: null,
+      myProfile: { ...EMPTY_PROFILE },
+      partnerProfile: null,
       sonhos: [],
+      viewMode: 'solo',
     })
   },
 
-  setTheme: (theme) => {
-    const { profile, themeByProfile } = get()
-    const updated = { ...themeByProfile, [profile]: theme }
-    saveLS(STORAGE_KEYS.THEME, updated, true)
-    set({ themeByProfile: updated })
+  // ── Couple ──────────────────────────────────────────────────────────────────
+  invitePartner: async (partnerEmail) => {
+    return apiInvitePartner(partnerEmail)
   },
 
+  acceptInvite: async (token) => {
+    await apiAcceptInvite(token)
+    // Recarrega dados para pegar o parceiro
+    const profileData = await apiLoadProfileData()
+    const me = await apiValidate()
+    set({
+      currentUser: me,
+      partnerProfile: profileData.parceiro ?? null,
+    })
+  },
+
+  leaveCouple: async () => {
+    await apiLeaveCouple()
+    const me = await apiValidate()
+    set({ currentUser: me, partnerProfile: null, viewMode: 'solo' })
+  },
+
+  // ── getActiveData: retorna dados da view atual ──────────────────────────────
   getActiveData: () => {
-    const { profile, profiles } = get()
-    if (profile === 'casal') {
-      const e = profiles.eu ?? EMPTY_PROFILE
-      const a = profiles.ela ?? EMPTY_PROFILE
-      // Garante que transacoes existem antes de mapear
-      const eTx = Array.isArray(e.transacoes) ? e.transacoes : []
-      const aTx = Array.isArray(a.transacoes) ? a.transacoes : []
+    const { viewMode, myProfile, partnerProfile } = get()
+
+    if (viewMode === 'casal' && partnerProfile) {
+      const me = myProfile ?? EMPTY_PROFILE
+      const partner = partnerProfile ?? EMPTY_PROFILE
+      const meTx = Array.isArray(me.transacoes) ? me.transacoes : []
+      const partnerTx = Array.isArray(partner.transacoes) ? partner.transacoes : []
       const allTx = [
-        ...eTx.map((t) => ({ ...t, perfil: 'Gustavo' })),
-        ...aTx.map((t) => ({ ...t, perfil: 'Larissa' })),
-      ].sort((x, y) => new Date(y.data) - new Date(x.data))
+        ...meTx.map(t => ({ ...t, perfil: me.nome || 'Eu' })),
+        ...partnerTx.map(t => ({ ...t, perfil: partner.nome || 'Parceiro(a)' })),
+      ].sort((a, b) => new Date(b.data) - new Date(a.data))
+
       return {
         nome: 'Visão do Casal',
-        contas: [...(e.contas ?? []), ...(a.contas ?? [])],
+        contas: [...(me.contas ?? []), ...(partner.contas ?? [])],
         investimentos: {
           reserva: {
-            atual: (e.investimentos?.reserva?.atual ?? 0) + (a.investimentos?.reserva?.atual ?? 0),
-            meta: (e.investimentos?.reserva?.meta ?? 0) + (a.investimentos?.reserva?.meta ?? 0),
+            atual: (me.investimentos?.reserva?.atual ?? 0) + (partner.investimentos?.reserva?.atual ?? 0),
+            meta:  (me.investimentos?.reserva?.meta  ?? 0) + (partner.investimentos?.reserva?.meta  ?? 0),
           },
-          previdencia: (e.investimentos?.previdencia ?? 0) + (a.investimentos?.previdencia ?? 0),
-          acoes: (e.investimentos?.acoes ?? 0) + (a.investimentos?.acoes ?? 0),
-          fundos: (e.investimentos?.fundos ?? 0) + (a.investimentos?.fundos ?? 0),
-          cdi: (e.investimentos?.cdi ?? 0) + (a.investimentos?.cdi ?? 0),
+          previdencia: (me.investimentos?.previdencia ?? 0) + (partner.investimentos?.previdencia ?? 0),
+          acoes:       (me.investimentos?.acoes       ?? 0) + (partner.investimentos?.acoes       ?? 0),
+          fundos:      (me.investimentos?.fundos      ?? 0) + (partner.investimentos?.fundos      ?? 0),
+          cdi:         (me.investimentos?.cdi         ?? 0) + (partner.investimentos?.cdi         ?? 0),
         },
         transacoes: allTx,
       }
     }
-    return profiles[profile] ?? EMPTY_PROFILE
+
+    return myProfile ?? { ...EMPTY_PROFILE }
   },
 
+  // ── Transactions ────────────────────────────────────────────────────────────
   addTransaction: async (tx) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
     const transaction = await apiCreateTransaction(tx)
-    const updated = {
-      ...profiles,
-      [target]: {
-        ...profiles[target],
-        transacoes: [transaction, ...profiles[target].transacoes],
-      },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    set(s => ({ myProfile: { ...s.myProfile, transacoes: [transaction, ...(s.myProfile.transacoes ?? [])] } }))
   },
 
   deleteTransaction: async (id) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
     await apiDeleteTransaction(id)
-    const updated = {
-      ...profiles,
-      [target]: {
-        ...profiles[target],
-        transacoes: profiles[target].transacoes.filter((t) => t.id !== id),
-      },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    set(s => ({ myProfile: { ...s.myProfile, transacoes: s.myProfile.transacoes.filter(t => t.id !== id) } }))
   },
 
   updateTransaction: async (id, tx) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
     const transaction = await apiUpdateTransaction(id, tx)
-    const updated = {
-      ...profiles,
-      [target]: {
-        ...profiles[target],
-        transacoes: profiles[target].transacoes.map((t) => (t.id === id ? transaction : t)),
-      },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    set(s => ({ myProfile: { ...s.myProfile, transacoes: s.myProfile.transacoes.map(t => t.id === id ? transaction : t) } }))
   },
 
+  // ── Contas ──────────────────────────────────────────────────────────────────
   addConta: async (conta) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
     const created = await apiCreateConta(conta)
-    const updated = {
-      ...profiles,
-      [target]: {
-        ...profiles[target],
-        contas: [...profiles[target].contas, created],
-      },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    set(s => ({ myProfile: { ...s.myProfile, contas: [...(s.myProfile.contas ?? []), created] } }))
   },
 
   updateConta: async (id, conta) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
-    const updatedConta = await apiUpdateConta(id, conta)
-    const updated = {
-      ...profiles,
-      [target]: {
-        ...profiles[target],
-        contas: profiles[target].contas.map((c) => (c.id === id ? updatedConta : c)),
-      },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    const updated = await apiUpdateConta(id, conta)
+    set(s => ({ myProfile: { ...s.myProfile, contas: s.myProfile.contas.map(c => c.id === id ? updated : c) } }))
   },
 
   deleteConta: async (id) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
     await apiDeleteConta(id)
-    const updated = {
-      ...profiles,
-      [target]: {
-        ...profiles[target],
-        contas: profiles[target].contas.filter((c) => c.id !== id),
-      },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    set(s => ({ myProfile: { ...s.myProfile, contas: s.myProfile.contas.filter(c => c.id !== id) } }))
   },
 
+  // ── Investimentos ───────────────────────────────────────────────────────────
   updateInvestimentos: async (inv) => {
-    const { profile, profiles } = get()
-    const target = profile === 'casal' ? 'eu' : profile
-    const investimentos = await apiUpdateInvestimentos(inv)
-    const updated = {
-      ...profiles,
-      [target]: { ...profiles[target], investimentos },
-    }
-    const key = target === 'eu' ? STORAGE_KEYS.USER_DATA_EU : STORAGE_KEYS.USER_DATA_ELA
-    saveLS(key, updated[target], false)
-    set({ profiles: updated })
+    const updated = await apiUpdateInvestimentos(inv)
+    set(s => ({ myProfile: { ...s.myProfile, investimentos: updated } }))
   },
 
+  // ── Sonhos ──────────────────────────────────────────────────────────────────
   addSonho: async (sonho) => {
     const created = await apiCreateSonho(sonho)
-    const { sonhos } = get()
-    const updated = [...sonhos, created]
-    saveLS(STORAGE_KEYS.SONHOS, updated, false)
-    set({ sonhos: updated })
+    set(s => ({ sonhos: [...s.sonhos, created] }))
   },
 
   updateSonho: async (id, fields) => {
-    const updatedSonho = await apiUpdateSonho(id, fields)
-    const { sonhos } = get()
-    const updated = sonhos.map((s) => (s.id === id ? updatedSonho : s))
-    saveLS(STORAGE_KEYS.SONHOS, updated, false)
-    set({ sonhos: updated })
+    const updated = await apiUpdateSonho(id, fields)
+    set(s => ({ sonhos: s.sonhos.map(s => s.id === id ? updated : s) }))
   },
 
   deleteSonho: async (id) => {
     await apiDeleteSonho(id)
-    const { sonhos } = get()
-    const updated = sonhos.filter((s) => s.id !== id)
-    saveLS(STORAGE_KEYS.SONHOS, updated, false)
-    set({ sonhos: updated })
+    set(s => ({ sonhos: s.sonhos.filter(s => s.id !== id) }))
   },
 
+  // ── buildFinancialContext (para IA) ─────────────────────────────────────────
   buildFinancialContext: () => {
-    const { profiles, sonhos } = get()
+    const { myProfile, partnerProfile, sonhos, currentUser } = get()
+
     const summarize = (d) => {
-      const ent = d.transacoes.filter((t) => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0)
-      const sai = d.transacoes.filter((t) => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0)
+      if (!d) return { entradas: 0, saidas: 0, saldo_mes: 0, categorias_gastos: {}, investimentos: { total: 0, reserva: { atual: 0, meta: 0 }, previdencia: 0, acoes: 0, fundos: 0, cdi: 0 } }
+      const tx = Array.isArray(d.transacoes) ? d.transacoes : []
+      const ent = tx.filter(t => t.tipo === 'entrada').reduce((s, t) => s + t.valor, 0)
+      const sai = tx.filter(t => t.tipo === 'saida').reduce((s, t) => s + t.valor, 0)
       const cats = {}
-      d.transacoes
-        .filter((t) => t.tipo === 'saida')
-        .forEach((t) => { cats[t.cat] = (cats[t.cat] || 0) + t.valor })
-      const inv = d.investimentos
-      const totalInv = inv.previdencia + inv.acoes + inv.fundos + inv.cdi
+      tx.filter(t => t.tipo === 'saida').forEach(t => { cats[t.cat] = (cats[t.cat] || 0) + t.valor })
+      const inv = d.investimentos ?? {}
+      const totalInv = (inv.previdencia ?? 0) + (inv.acoes ?? 0) + (inv.fundos ?? 0) + (inv.cdi ?? 0)
       return {
-        entradas: ent,
-        saidas: sai,
-        saldo_mes: ent - sai,
-        categorias_gastos: cats,
-        investimentos: {
-          total: totalInv + inv.reserva.atual,
-          reserva: inv.reserva,
-          previdencia: inv.previdencia,
-          acoes: inv.acoes,
-          fundos: inv.fundos,
-          cdi: inv.cdi,
-        },
+        entradas: ent, saidas: sai, saldo_mes: ent - sai, categorias_gastos: cats,
+        investimentos: { total: totalInv + (inv.reserva?.atual ?? 0), reserva: inv.reserva, previdencia: inv.previdencia, acoes: inv.acoes, fundos: inv.fundos, cdi: inv.cdi },
       }
     }
-    return {
+
+    const ctx = {
       mes: new Date().toLocaleString('pt-BR', { month: 'long', year: '2-digit' }).replace(' de ', '/'),
-      Gustavo: summarize(profiles.eu),
-      Larissa: summarize(profiles.ela),
-      sonhos_do_casal: sonhos.map((s) => ({
-        nome: s.nome,
-        meta: s.meta,
-        acumulado: s.acumulado,
-        progresso_pct: Math.round((s.acumulado / s.meta) * 100),
-        prazo: s.prazo,
+      [currentUser?.name || 'Eu']: summarize(myProfile),
+      sonhos_do_casal: (sonhos ?? []).map(s => ({
+        nome: s.nome, meta: s.meta, acumulado: s.acumulado,
+        progresso_pct: Math.round((s.acumulado / s.meta) * 100), prazo: s.prazo,
       })),
     }
+
+    if (partnerProfile) {
+      ctx[partnerProfile.nome || 'Parceiro(a)'] = summarize(partnerProfile)
+    }
+
+    return ctx
   },
 }))
