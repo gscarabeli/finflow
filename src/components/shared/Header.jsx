@@ -10,8 +10,7 @@ const TABS = [
 ]
 
 const PROFILES = [
-  { id: 'eu', label: 'Gustavo' },
-  { id: 'ela', label: 'Larissa' },
+  { id: 'solo', label: 'Solo' },
   { id: 'casal', label: 'Casal' },
 ]
 
@@ -23,7 +22,7 @@ const THEME_OPTIONS = [
 ]
 
 export default function Header() {
-  const { tab, profile, themeByProfile, setTab, setProfile, setTheme, authenticated, logout } = useStore()
+  const { tab, viewMode, themeByMode, setTab, setViewMode, setTheme, authenticated, logout } = useStore()
 
   return (
     <header className="sticky top-0 z-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 sm:px-6"
@@ -36,7 +35,7 @@ export default function Header() {
       {/* Tabs */}
       <nav className="flex flex-wrap gap-1 rounded-xl p-1 border overflow-x-auto"
         style={{ background: 'var(--bg3)', borderColor: 'var(--border)' }}>
-        {TABS.filter(t => !t.onlyCasal || profile === 'casal').map((t) => (
+        {TABS.filter(t => !t.onlyCasal || viewMode === 'casal').map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -55,9 +54,9 @@ export default function Header() {
         {PROFILES.map((p) => (
           <button
             key={p.id}
-            onClick={() => setProfile(p.id)}
+            onClick={() => setViewMode(p.id)}
             className="rounded-lg border-0 cursor-pointer transition-all duration-150 text-xs font-semibold px-3 py-1.5"
-            style={profile === p.id
+            style={viewMode === p.id
               ? { background: 'var(--blue)', color: '#fff' }
               : { background: 'transparent', color: 'var(--text3)', border: '1px solid var(--border)' }}
           >
@@ -71,7 +70,7 @@ export default function Header() {
               key={t.id}
               onClick={() => setTheme(t.id)}
               className="rounded-lg border-0 cursor-pointer transition-all duration-150 text-xs font-semibold px-3 py-1.5"
-              style={themeByProfile[profile] === t.id
+              style={themeByMode[viewMode] === t.id
                 ? { background: 'var(--blue)', color: '#fff' }
                 : { background: 'transparent', color: 'var(--text3)', border: '1px solid var(--border)' }}
             >

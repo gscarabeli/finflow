@@ -99,7 +99,7 @@ const CustomTooltip = ({ active, payload }) => {
 }
 
 export default function Investimentos() {
-  const { getActiveData, updateInvestimentos, profile } = useStore()
+  const { getActiveData, updateInvestimentos, viewMode } = useStore()
   const [showMetaModal, setShowMetaModal] = useState(false)
   const [showInvestimentoModal, setShowInvestimentoModal] = useState(false)
   const pd = getActiveData()
@@ -121,14 +121,14 @@ export default function Investimentos() {
     updateInvestimentos(updates)
   }
 
-  const isCasal = profile === 'casal'
+  const isCasal = viewMode === 'casal'
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
-            Investimentos · {profile === 'casal' ? 'Visão Consolidada' : pd.nome}
+            Investimentos · {viewMode === 'casal' ? 'Visão Consolidada' : pd.nome}
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Patrimônio e metas de investimento</p>
         </div>

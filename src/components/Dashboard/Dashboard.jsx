@@ -96,11 +96,11 @@ const CustomTooltip = ({ active, payload }) => {
 }
 
 export default function Dashboard() {
-  const { getActiveData, deleteTransaction, updateTransaction, profile } = useStore()
+  const { getActiveData, deleteTransaction, updateTransaction, viewMode } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [editingTx, setEditingTx] = useState(null)
   const pd = getActiveData()
-  const isCasal = profile === 'casal'
+  const isCasal = viewMode === 'casal'
 
   const { entradas, saidas, saldo, catData, saldoContas, saldoVR, nonVrCount } = useMemo(() => {
     const txs = pd.transacoes
@@ -123,7 +123,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
-            {profile === 'casal' ? 'Visão Consolidada do Casal' : pd.nome}
+            {viewMode === 'casal' ? 'Visão Consolidada do Casal' : pd.nome}
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Abril 2026 · Dados em tempo real</p>
         </div>
@@ -182,7 +182,7 @@ export default function Dashboard() {
                     {tx.tipo === 'entrada' ? '+' : '-'}{fmt(tx.valor)}
                   </div>
                   <div className="text-xs w-10 text-right" style={{ color: 'var(--text3)' }}>{fmtDate(tx.data)}</div>
-                  {profile !== 'casal' && (
+                  {viewMode !== 'casal' && (
                     <div className="flex gap-1">
                       <button onClick={() => {
                         setEditingTx(tx)
