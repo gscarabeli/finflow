@@ -555,13 +555,20 @@ app.post('/api/couple/invite', authMiddleware, rateLimit(3), honeypot, async (re
     ? `${APP_URL}/?invite=${token}`
     : `${APP_URL}/?invite=${token}&register=true`
 
-  await resend.emails.send({
-    from: FROM_EMAIL, to: partnerEmail.toLowerCase().trim(),
-    subject: `${inviter.name} te convidou para o FinFlow 💑`,
-    html: coupleInviteTemplate(inviter.name, partnerName, inviteUrl),
-  })
-  markEmailSent(partnerEmail)
-  return res.json({ message: 'Convite enviado!' })
+  let emailSent = false
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL, to: partnerEmail.toLowerCase().trim(),
+      subject: `${inviter.name} te convidou para o FinFlow 💑`,
+      html: coupleInviteTemplate(inviter.name, partnerName, inviteUrl),
+    })
+    if (!result?.error) {
+      emailSent = true
+      markEmailSent(partnerEmail)
+    }
+  } catch {}
+
+  return res.json({ message: 'Convite gerado!', emailSent, inviteUrl })
 })
 
 app.post('/api/couple/accept', authMiddleware, async (req, res) => {

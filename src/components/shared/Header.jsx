@@ -243,51 +243,97 @@ function InviteModal({ open, onClose }) {
   const { invitePartner } = useStore()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState(null)
+  const [result, setResult] = useState(null) // { emailSent, inviteUrl } | null
+  const [error, setError] = useState(null)
+  const [copied, setCopied] = useState(false)
 
-  function handleClose() { setEmail(''); setMsg(null); setLoading(false); onClose() }
+  function handleClose() { setEmail(''); setResult(null); setError(null); setCopied(false); setLoading(false); onClose() }
 
   async function submit() {
     if (!email) return
-    setLoading(true); setMsg(null)
+    setLoading(true); setError(null); setResult(null)
     try {
-      await invitePartner(email)
-      setMsg({ ok: true, text: 'Convite enviado! Ela vai receber um e-mail com o link.' })
+      const res = await invitePartner(email)
+      setResult(res)
     } catch (err) {
-      setMsg({ ok: false, text: err.message || 'Erro ao enviar convite.' })
+      setError(err.message || 'Erro ao gerar convite.')
     } finally {
       setLoading(false)
     }
   }
+
+  function copyLink() {
+    if (!result?.inviteUrl) return
+    navigator.clipboard.writeText(result.inviteUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const done = !!result
 
   return (
     <Modal open={open} onClose={handleClose} title="Convidar Parceiro(a)">
       <p className="text-xs mb-4" style={{ color: 'var(--text3)' }}>
         Informe o e-mail do(a) seu(sua) parceiro(a). Se ela ainda não tiver conta, o link vai direcionar para o cadastro.
       </p>
-      <Input
-        label="E-mail do(a) parceiro(a)"
-        type="email"
-        placeholder="parceiro@email.com"
-        value={email}
-        onChange={(e) => { setEmail(e.target.value); setMsg(null) }}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-      />
-      {msg && (
-        <div className="text-xs mb-3 p-2.5 rounded-lg border" style={{
-          background: msg.ok ? 'var(--green-bg)' : 'var(--red-bg)',
-          color: msg.ok ? 'var(--green)' : 'var(--red)',
-          borderColor: msg.ok ? 'var(--green)' : 'var(--red)',
-        }}>
-          {msg.text}
+
+      {!done && (
+        <>
+          <Input
+            label="E-mail do(a) parceiro(a)"
+            type="email"
+            placeholder="parceiro@email.com"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError(null) }}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+          />
+          {error && (
+            <div className="text-xs mb-3 p-2.5 rounded-lg border" style={{
+              background: 'var(--red-bg)', color: 'var(--red)', borderColor: 'var(--red)',
+            }}>
+              {error}
+            </div>
+          )}
+          <div className="flex gap-2 mt-1">
+            <Button onClick={submit} disabled={loading || !email}>
+              {loading ? <><Loader size={13} className="inline animate-spin mr-1.5" />Gerando...</> : 'Enviar convite'}
+            </Button>
+            <Button variant="ghost" onClick={handleClose}>Cancelar</Button>
+          </div>
+        </>
+      )}
+
+      {done && (
+        <div className="flex flex-col gap-3">
+          {result.emailSent ? (
+            <div className="text-xs p-2.5 rounded-lg border" style={{ background: 'var(--green-bg)', color: 'var(--green)', borderColor: 'var(--green)' }}>
+              E-mail enviado para <strong>{email}</strong>! O link é válido por 48 horas.
+            </div>
+          ) : (
+            <div className="text-xs p-2.5 rounded-lg border" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', borderColor: 'var(--amber)' }}>
+              Não foi possível enviar o e-mail automaticamente. Copie o link abaixo e envie diretamente para a pessoa.
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text3)' }}>Link de convite</label>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={result.inviteUrl}
+                className="flex-1 rounded-xl border px-3 py-2 text-xs outline-none"
+                style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text2)' }}
+              />
+              <Button onClick={copyLink} size="sm">
+                {copied ? '✓ Copiado' : 'Copiar'}
+              </Button>
+            </div>
+          </div>
+
+          <Button variant="ghost" onClick={handleClose}>Fechar</Button>
         </div>
       )}
-      <div className="flex gap-2 mt-1">
-        <Button onClick={submit} disabled={loading || !email || msg?.ok}>
-          {loading ? <><Loader size={13} className="inline animate-spin mr-1.5" />Enviando...</> : 'Enviar convite'}
-        </Button>
-        <Button variant="ghost" onClick={handleClose}>Fechar</Button>
-      </div>
     </Modal>
   )
 }
