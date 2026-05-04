@@ -17,12 +17,13 @@ export const BANKS = [
 ]
 
 export const TIPO_LABELS = {
-  'conta-corrente':     'Conta Corrente',
-  'conta-investimento': 'Conta Investimento',
-  'vale-refeicao':      'Vale Refeição',
-  'vale-beneficio':     'Vale Benefício',
-  'cartao-credito':     'Cartão de Crédito',
-  'outros':             'Outros',
+  'conta-corrente':          'Conta Corrente',
+  'conta-investimento':      'Conta Investimento',
+  'vale-refeicao':           'Vale Refeição',
+  'vale-beneficio':          'Vale Benefício',
+  'cartao-credito':          'Cartão de Crédito',
+  'conta-corrente-cartao':   'Corrente + Cartão',
+  'outros':                  'Outros',
 }
 
 export function getBankInfo(bancoId) {

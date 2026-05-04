@@ -181,8 +181,8 @@ export default function Dashboard() {
           style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Saldo VR (Alelo)</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>Valor extra reservado para alimentação, não entra no saldo principal.</div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Saldo VR + VB (Alelo)</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--text3)' }}>Valor extra reservado para alimentação e benefícios, não entra no saldo principal.</div>
             </div>
             <div className="text-lg font-semibold" style={{ color: 'var(--cyan)' }}>{fmt(saldoVR)}</div>
           </div>

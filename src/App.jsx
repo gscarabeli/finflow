@@ -108,7 +108,7 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <Header />
-      <main>
+      <main key={tab} className="tab-content">
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'contas' && <Contas />}
         {tab === 'investimentos' && <Investimentos />}

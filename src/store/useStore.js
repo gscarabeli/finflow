@@ -134,6 +134,7 @@ export const useStore = create((set, get) => ({
       partnerProfile: profileData.parceiro ?? null,
       sonhos,
       viewMode: 'solo',
+      tab: 'dashboard',
     })
   },
 

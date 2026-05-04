@@ -93,7 +93,7 @@ function ContaModal({ open, onClose, conta }) {
         ))}
       </Select>
       <Input label="Saldo Atual (R$)" type="number" placeholder="0,00" step="0.01" value={form.saldo} onChange={e => set('saldo', e.target.value)} />
-      {form.tipo === 'cartao-credito' && (
+      {(form.tipo === 'cartao-credito' || form.tipo === 'conta-corrente-cartao') && (
         <>
           <Input label="Limite (R$)" type="number" placeholder="0,00" step="0.01" value={form.limite} onChange={e => set('limite', e.target.value)} />
           <Input label="Dia de Fechamento" type="number" placeholder="Ex: 10" min={1} max={28} value={form.dia_fechamento} onChange={e => set('dia_fechamento', e.target.value)} />

@@ -4,11 +4,11 @@ import { useStore } from '../../store/useStore.js'
 import { Modal, Input, Button } from './UI.jsx'
 
 const TABS = [
-  { id: 'dashboard',    label: 'Dashboard' },
   { id: 'contas',       label: 'Contas' },
-  { id: 'credito',      label: 'Crédito' },
-  { id: 'investimentos',label: 'Investimentos' },
   { id: 'apagar',       label: 'A Pagar' },
+  { id: 'credito',      label: 'Crédito' },
+  { id: 'dashboard',    label: 'Dashboard' },
+  { id: 'investimentos',label: 'Investimentos' },
   { id: 'sonhos',       label: 'Sonhos',        requiresCasal: true },
   { id: 'ia',           label: 'Consultoria IA', requiresCasal: true },
 ]
