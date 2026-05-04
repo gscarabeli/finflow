@@ -1,9 +1,9 @@
 import React from 'react'
 
-export function Card({ children, className = '' }) {
+export function Card({ children, className = '', style }) {
   return (
     <div className={`rounded-2xl border p-5 ${className}`}
-      style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}>
+      style={{ background: 'var(--bg2)', borderColor: 'var(--border)', ...style }}>
       {children}
     </div>
   )

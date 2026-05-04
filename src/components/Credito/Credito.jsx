@@ -1,14 +1,12 @@
 import React, { useState, useMemo } from 'react'
-import { CreditCard } from 'lucide-react'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { CreditCard, Plus } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useStore } from '../../store/useStore.js'
 import { fmt, fmtDate } from '../../hooks/useUtils.js'
-import { Card, CardTitle, StatCard, Badge } from '../shared/UI.jsx'
+import { Card, CardTitle, StatCard, Badge, Button } from '../shared/UI.jsx'
 import { BankLogo } from '../shared/BankLogo.jsx'
 import { CAT_COLORS, CAT_ICONS } from '../../data/mockData.js'
+import AddTxModal from '../shared/AddTxModal.jsx'
 
 const CARD_TYPES = ['cartao-credito', 'conta-corrente-cartao']
 
@@ -48,78 +46,18 @@ function getMonthlyHistory(transactions, cartaoId) {
   return months
 }
 
-function SortableCardPill({ c, effectiveId, setSelectedId }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id })
-  const sel = effectiveId === c.id
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, flexShrink: 0 }}
-      {...attributes}
-      {...listeners}
-    >
-      <button
-        onClick={() => setSelectedId(c.id)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 16px', borderRadius: 14,
-          cursor: isDragging ? 'grabbing' : 'grab',
-          background: sel ? 'var(--blue-bg)' : 'var(--bg2)',
-          border: sel ? '1.5px solid var(--blue)' : '1.5px solid var(--border)',
-          color: 'var(--text)', whiteSpace: 'nowrap', transition: 'background 0.15s, border 0.15s',
-          userSelect: 'none',
-        }}
-      >
-        <BankLogo banco={c.banco} tipo={c.tipo} size={28} />
-        <div style={{ textAlign: 'left' }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{c.nome}</div>
-          {c.limite && <div style={{ fontSize: 11, color: 'var(--text3)' }}>Limite: {fmt(c.limite)}</div>}
-        </div>
-      </button>
-    </div>
-  )
-}
-
 export default function Credito() {
   const { getActiveData, viewMode } = useStore()
   const [selectedId, setSelectedId] = useState(null)
-  const [cardOrder, setCardOrder] = useState([])
+  const [showModal, setShowModal] = useState(false)
   const pd = getActiveData()
   const isCasal = viewMode === 'casal'
 
   const cartoes = pd.contas.filter(c => CARD_TYPES.includes(c.tipo))
-
-  // Merge persisted order with current cards (handles additions/deletions)
-  const orderedCartoes = useMemo(() => {
-    const ids = cartoes.map(c => c.id)
-    const filtered = cardOrder.filter(id => ids.includes(id))
-    const newIds = ids.filter(id => !filtered.includes(id))
-    return [...filtered, ...newIds].map(id => cartoes.find(c => c.id === id))
-  }, [cartoes, cardOrder])
-
   const effectiveId = selectedId && cartoes.find(c => c.id === selectedId)
     ? selectedId
-    : (orderedCartoes[0]?.id ?? null)
+    : (cartoes[0]?.id ?? null)
   const selectedCard = cartoes.find(c => c.id === effectiveId) ?? null
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
-  )
-
-  function handleDragEnd(event) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    setCardOrder(prev => {
-      const ids = orderedCartoes.map(c => c.id)
-      const current = prev.length ? prev.filter(id => ids.includes(id)) : ids
-      const newIds = ids.filter(id => !current.includes(id))
-      const merged = [...current, ...newIds]
-      const oldIdx = merged.indexOf(active.id)
-      const newIdx = merged.indexOf(over.id)
-      return arrayMove(merged, oldIdx, newIdx)
-    })
-  }
 
   const { cycle, cycleTxs, nextTxs, monthlyHistory, totalCurrent, totalNext, usagePct } = useMemo(() => {
     if (!selectedCard) return { cycle: null, cycleTxs: [], nextTxs: [], monthlyHistory: [], totalCurrent: 0, totalNext: 0, usagePct: null }
@@ -173,26 +111,44 @@ export default function Credito() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Crédito</h1>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Acompanhe faturas e gastos nos cartões</p>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>Crédito</h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Acompanhe faturas e gastos nos cartões</p>
+        </div>
+        {!isCasal && selectedCard && (
+          <Button onClick={() => setShowModal(true)}>
+            <span className="flex items-center gap-1.5"><Plus size={14} /> Lançamento</span>
+          </Button>
+        )}
       </div>
 
-      {/* Card selector — drag to reorder */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={orderedCartoes.map(c => c.id)} strategy={horizontalListSortingStrategy}>
-          <div className="flex gap-3 mb-6 overflow-x-auto pb-1">
-            {orderedCartoes.map(c => (
-              <SortableCardPill
-                key={c.id}
-                c={c}
-                effectiveId={effectiveId}
-                setSelectedId={setSelectedId}
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      {/* Card selector */}
+      <div className="flex gap-3 mb-6 overflow-x-auto pb-1">
+        {cartoes.map(c => {
+          const sel = effectiveId === c.id
+          return (
+            <button
+              key={c.id}
+              onClick={() => setSelectedId(c.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 16px', borderRadius: 14, cursor: 'pointer',
+                background: sel ? 'var(--blue-bg)' : 'var(--bg2)',
+                border: sel ? '1.5px solid var(--blue)' : '1.5px solid var(--border)',
+                color: 'var(--text)', whiteSpace: 'nowrap', transition: 'all 0.15s', flexShrink: 0,
+              }}
+            >
+              <BankLogo banco={c.banco} tipo={c.tipo} size={28} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.nome}</div>
+                {c.limite && <div style={{ fontSize: 11, color: 'var(--text3)' }}>Limite: {fmt(c.limite)}</div>}
+              </div>
+            </button>
+          )
+        })}
+      </div>
 
       {selectedCard && cycle && (
         <>
@@ -250,7 +206,7 @@ export default function Credito() {
           )}
 
           {/* Monthly history chart */}
-          <Card style={{ marginBottom: 16 }}>
+          <Card style={{ marginBottom: 24 }}>
             <CardTitle>Histórico de Gastos (6 meses)</CardTitle>
             <div style={{ height: 150 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -286,7 +242,7 @@ export default function Credito() {
                 <div className="text-xs">
                   {isCasal
                     ? 'Visualize as transações nos perfis individuais.'
-                    : 'Ao registrar uma saída no Dashboard, selecione este cartão.'}
+                    : 'Clique em "+ Lançamento" para registrar um gasto neste cartão.'}
                 </div>
               </div>
             ) : (
@@ -345,6 +301,12 @@ export default function Credito() {
           )}
         </>
       )}
+
+      <AddTxModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        initialCartaoId={effectiveId}
+      />
     </div>
   )
 }

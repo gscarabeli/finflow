@@ -6,7 +6,7 @@ import { fmt, fmtDate } from '../../hooks/useUtils.js'
 import { Card, CardTitle, Badge, Modal, Input, Select, Button, StatCard } from '../shared/UI.jsx'
 
 const EMPTY_FORM = {
-  nome: '', valor: '', vencimento: new Date().toISOString().split('T')[0], categoria: 'Outros', pago: false,
+  nome: '', valor: '', vencimento: '', categoria: 'Outros', pago: false,
 }
 
 function fromItem(item) {
@@ -23,13 +23,13 @@ function PagamentoModal({ open, onClose, editing }) {
 
   React.useEffect(() => {
     if (open) {
-      setForm(editing ? fromItem(editing) : { ...EMPTY_FORM, vencimento: new Date().toISOString().split('T')[0] })
+      setForm(editing ? fromItem(editing) : { ...EMPTY_FORM })
       setError(null)
     }
   }, [open, editing])
 
   const submit = async () => {
-    if (!form.nome || !form.valor || !form.vencimento) return
+    if (!form.nome || !form.valor) return
     setLoading(true); setError(null)
     try {
       const payload = { ...form, valor: parseFloat(form.valor) }
@@ -100,12 +100,13 @@ export default function APagar() {
   const pagos      = pagamentos.filter(p => p.pago)
   const totalPend  = pendentes.reduce((s, p) => s + p.valor, 0)
   const totalPago  = pagos.reduce((s, p) => s + p.valor, 0)
-  const vencidos   = pendentes.filter(p => p.vencimento < today).length
+  const vencidos   = pendentes.filter(p => p.vencimento && p.vencimento < today).length
 
   function statusOf(item) {
-    if (item.pago)              return 'pago'
-    if (item.vencimento < today) return 'vencido'
-    if (item.vencimento === today) return 'hoje'
+    if (item.pago)                               return 'pago'
+    if (!item.vencimento)                        return 'pendente'
+    if (item.vencimento < today)                 return 'vencido'
+    if (item.vencimento === today)               return 'hoje'
     return 'pendente'
   }
 
@@ -194,7 +195,7 @@ export default function APagar() {
                     <div className="text-sm font-medium" style={{ color: 'var(--text)', textDecoration: item.pago ? 'line-through' : 'none' }}>
                       {item.nome}
                     </div>
-                    <div className="text-xs" style={{ color: 'var(--text3)' }}>{item.categoria} · Vence {fmtDate(item.vencimento)}</div>
+                    <div className="text-xs" style={{ color: 'var(--text3)' }}>{item.categoria}{item.vencimento ? ` · Vence ${fmtDate(item.vencimento)}` : ''}</div>
                   </div>
 
                   <div className="text-sm font-semibold" style={{ color: item.pago ? 'var(--green)' : 'var(--text)' }}>

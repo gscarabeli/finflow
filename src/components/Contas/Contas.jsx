@@ -1,5 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { Plus, Trash2, Edit2 } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useStore } from '../../store/useStore.js'
 import { fmt } from '../../hooks/useUtils.js'
 import { Card, CardTitle, Modal, Input, Select, Button } from '../shared/UI.jsx'
@@ -29,9 +32,7 @@ function ContaModal({ open, onClose, conta }) {
     if (!form.nome) set('nome', bank.name)
   }
 
-  function clearBank() {
-    set('banco', null)
-  }
+  function clearBank() { set('banco', null) }
 
   const submit = () => {
     if (!form.nome || form.saldo === '') return
@@ -45,6 +46,8 @@ function ContaModal({ open, onClose, conta }) {
     else addConta(data)
     onClose()
   }
+
+  const hasCard = form.tipo === 'cartao-credito' || form.tipo === 'conta-corrente-cartao'
 
   return (
     <Modal open={open} onClose={onClose} title={conta ? 'Editar Conta' : 'Nova Conta'}>
@@ -93,7 +96,7 @@ function ContaModal({ open, onClose, conta }) {
         ))}
       </Select>
       <Input label="Saldo Atual (R$)" type="number" placeholder="0,00" step="0.01" value={form.saldo} onChange={e => set('saldo', e.target.value)} />
-      {(form.tipo === 'cartao-credito' || form.tipo === 'conta-corrente-cartao') && (
+      {hasCard && (
         <>
           <Input label="Limite (R$)" type="number" placeholder="0,00" step="0.01" value={form.limite} onChange={e => set('limite', e.target.value)} />
           <Input label="Dia de Fechamento" type="number" placeholder="Ex: 10" min={1} max={28} value={form.dia_fechamento} onChange={e => set('dia_fechamento', e.target.value)} />
@@ -108,12 +111,88 @@ function ContaModal({ open, onClose, conta }) {
   )
 }
 
+function SortableConta({ conta, isCasal, onEdit, onDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: conta.id })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      {...(!isCasal ? { ...attributes, ...listeners } : {})}
+    >
+      <Card style={{ cursor: isCasal ? 'default' : (isDragging ? 'grabbing' : 'grab'), height: '100%' }}>
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <BankLogo banco={conta.banco} tipo={conta.tipo} size={40} />
+            <div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{conta.nome}</div>
+              <div className="text-xs" style={{ color: 'var(--text3)' }}>
+                {TIPO_LABELS[conta.tipo] || conta.tipo}
+              </div>
+            </div>
+          </div>
+          {!isCasal && (
+            <div className="flex gap-1" onPointerDown={e => e.stopPropagation()}>
+              <button
+                onClick={e => { e.stopPropagation(); onEdit() }}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--text3)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <Edit2 size={14} />
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); onDelete() }}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--red-bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="text-lg font-semibold font-mono" style={{
+          color: conta.saldo >= 0 ? 'var(--green)' : 'var(--red)'
+        }}>
+          {fmt(conta.saldo)}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 export default function Contas() {
   const { getActiveData, deleteConta, viewMode } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [editingConta, setEditingConta] = useState(null)
+  const [contaOrder, setContaOrder] = useState([])
   const pd = getActiveData()
   const isCasal = viewMode === 'casal'
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
+
+  const orderedContas = useMemo(() => {
+    const ids = pd.contas.map(c => c.id)
+    const filtered = contaOrder.filter(id => ids.includes(id))
+    const newIds = ids.filter(id => !filtered.includes(id))
+    return [...filtered, ...newIds].map(id => pd.contas.find(c => c.id === id))
+  }, [pd.contas, contaOrder])
+
+  function handleDragEnd({ active, over }) {
+    if (!over || active.id === over.id) return
+    setContaOrder(prev => {
+      const ids = orderedContas.map(c => c.id)
+      const current = prev.length ? prev.filter(id => ids.includes(id)) : ids
+      const newIds = ids.filter(id => !current.includes(id))
+      const merged = [...current, ...newIds]
+      return arrayMove(merged, merged.indexOf(active.id), merged.indexOf(over.id))
+    })
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -143,50 +222,21 @@ export default function Contas() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pd.contas.map((conta) => (
-            <Card key={conta.id}>
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <BankLogo banco={conta.banco} tipo={conta.tipo} size={40} />
-                  <div>
-                    <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{conta.nome}</div>
-                    <div className="text-xs" style={{ color: 'var(--text3)' }}>
-                      {TIPO_LABELS[conta.tipo] || conta.tipo}
-                    </div>
-                  </div>
-                </div>
-                {!isCasal && (
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => { setEditingConta(conta); setShowModal(true) }}
-                      className="p-1.5 rounded-lg transition-colors"
-                      style={{ color: 'var(--text3)', background: 'transparent', border: 'none', cursor: 'pointer' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => deleteConta(conta.id)}
-                      className="p-1.5 rounded-lg transition-colors"
-                      style={{ color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--red-bg)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="text-lg font-semibold font-mono" style={{
-                color: conta.saldo >= 0 ? 'var(--green)' : 'var(--red)'
-              }}>
-                {fmt(conta.saldo)}
-              </div>
-            </Card>
-          ))}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={orderedContas.map(c => c.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {orderedContas.map(conta => (
+                <SortableConta
+                  key={conta.id}
+                  conta={conta}
+                  isCasal={isCasal}
+                  onEdit={() => { setEditingConta(conta); setShowModal(true) }}
+                  onDelete={() => deleteConta(conta.id)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       <ContaModal
