@@ -8,6 +8,7 @@ import Investimentos from './components/Investimentos/Investimentos.jsx'
 import Sonhos from './components/Sonhos/Sonhos.jsx'
 import IAChat from './components/IAChat/IAChat.jsx'
 import APagar from './components/APagar/APagar.jsx'
+import Credito from './components/Credito/Credito.jsx'
 
 // Maps legacy theme names (stored before hex migration) to their hex equivalents
 const LEGACY_THEME_NAMES = {
@@ -112,6 +113,7 @@ export default function App() {
         {tab === 'contas' && <Contas />}
         {tab === 'investimentos' && <Investimentos />}
         {tab === 'apagar' && <APagar />}
+        {tab === 'credito' && <Credito />}
         {tab === 'sonhos' && <Sonhos />}
         {tab === 'ia' && <IAChat />}
       </main>

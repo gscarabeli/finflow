@@ -87,7 +87,7 @@ function PagamentoModal({ open, onClose, editing }) {
 }
 
 export default function APagar() {
-  const { myProfile, updatePagamento, deletePagamento, viewMode } = useStore()
+  const { myProfile, updatePagamento, deletePagamento, viewMode, addTransaction } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing]     = useState(null)
 
@@ -117,7 +117,22 @@ export default function APagar() {
   }
 
   async function togglePago(item) {
-    try { await updatePagamento(item.id, { ...item, valor: item.valor, pago: !item.pago }) } catch {}
+    const markingAsPaid = !item.pago
+    try {
+      await updatePagamento(item.id, { ...item, pago: !item.pago })
+      if (markingAsPaid) {
+        try {
+          await addTransaction({
+            desc: item.nome,
+            valor: item.valor,
+            tipo: 'saida',
+            cat: item.categoria,
+            data: new Date().toISOString().split('T')[0],
+            agendada: false,
+          })
+        } catch {}
+      }
+    } catch {}
   }
 
   function openEdit(item) { setEditing(item); setShowModal(true) }

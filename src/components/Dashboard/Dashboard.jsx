@@ -9,20 +9,21 @@ import { BankLogo, TIPO_LABELS } from '../shared/BankLogo.jsx'
 
 const EMPTY_TX_FORM = {
   desc: '', valor: '', tipo: 'saida', cat: 'Alimentação',
-  data: new Date().toISOString().split('T')[0], agendada: false,
+  data: new Date().toISOString().split('T')[0], agendada: false, cartao_id: null,
 }
 
 function fromEditingTx(tx) {
-  return { desc: tx.desc, valor: tx.valor.toString(), tipo: tx.tipo, cat: tx.cat, data: tx.data, agendada: !!tx.agendada }
+  return { desc: tx.desc, valor: tx.valor.toString(), tipo: tx.tipo, cat: tx.cat, data: tx.data, agendada: !!tx.agendada, cartao_id: tx.cartao_id || null }
 }
 
 function AddTxModal({ open, onClose, editingTx }) {
-  const { addTransaction, updateTransaction } = useStore()
+  const { addTransaction, updateTransaction, myProfile } = useStore()
   const isEdit = !!editingTx
   const [form, setForm] = useState(editingTx ? fromEditingTx(editingTx) : { ...EMPTY_TX_FORM })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const cartoes = (myProfile?.contas ?? []).filter(c => c.tipo === 'cartao-credito')
 
   React.useEffect(() => {
     if (open) {
@@ -57,10 +58,16 @@ function AddTxModal({ open, onClose, editingTx }) {
       <Input label="Descrição" placeholder="Ex: Supermercado" value={form.desc} onChange={(e) => set('desc', e.target.value)} />
       <Input label="Valor (R$)" type="number" placeholder="0,00" step="0.01" value={form.valor} onChange={(e) => set('valor', e.target.value)} />
       <Input label="Data" type="date" value={form.data} onChange={(e) => set('data', e.target.value)} />
-      <Select label="Tipo" value={form.tipo} onChange={(e) => set('tipo', e.target.value)}>
+      <Select label="Tipo" value={form.tipo} onChange={(e) => { set('tipo', e.target.value); if (e.target.value === 'entrada') set('cartao_id', null) }}>
         <option value="saida">Saída</option>
         <option value="entrada">Entrada</option>
       </Select>
+      {form.tipo === 'saida' && cartoes.length > 0 && (
+        <Select label="Cartão de Crédito (opcional)" value={form.cartao_id || ''} onChange={e => set('cartao_id', e.target.value || null)}>
+          <option value="">Sem cartão</option>
+          {cartoes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </Select>
+      )}
       <Select label="Categoria" value={form.cat} onChange={(e) => set('cat', e.target.value)}>
         {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
       </Select>
@@ -111,7 +118,7 @@ const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null
   return (
     <div className="rounded-xl border px-3 py-2 text-xs" style={{ background: 'var(--bg4)', borderColor: 'var(--border2)', color: 'var(--text)' }}>
-      <div className="font-semibold">{payload[0].name}</div>
+      <div className="font-semibold">{payload[0].payload?.name || payload[0].name}</div>
       <div>{fmt(payload[0].value)}</div>
     </div>
   )
@@ -136,7 +143,7 @@ export default function Dashboard() {
     const catMap = {}
     txs.filter((t) => t.tipo === 'saida').forEach((t) => { catMap[t.cat] = (catMap[t.cat] || 0) + t.valor })
     const catData = Object.entries(catMap).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))
-    const isVR = (c) => c.tipo.toLowerCase().includes('vale refeição') || c.tipo.toLowerCase().includes('vr')
+    const isVR = (c) => c.tipo === 'vale-refeicao' || c.tipo === 'vale-beneficio'
     const saldoVR = pd.contas.filter(isVR).reduce((s, c) => s + c.saldo, 0)
     const saldoContas = pd.contas.filter((c) => !isVR(c)).reduce((s, c) => s + c.saldo, 0)
     const nonVrCount = pd.contas.filter((c) => !isVR(c)).length
@@ -152,7 +159,7 @@ export default function Dashboard() {
           <h1 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
             {viewMode === 'casal' ? 'Visão Consolidada do Casal' : pd.nome}
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>Abril 2026 · Dados em tempo real</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>{new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' })} · Dados em tempo real</p>
         </div>
         {!isCasal && (
           <Button onClick={() => setShowModal(true)}>

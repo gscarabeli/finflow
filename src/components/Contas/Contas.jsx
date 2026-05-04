@@ -5,10 +5,14 @@ import { fmt } from '../../hooks/useUtils.js'
 import { Card, CardTitle, Modal, Input, Select, Button } from '../shared/UI.jsx'
 import { BANKS, TIPO_LABELS, BankLogo } from '../shared/BankLogo.jsx'
 
-const EMPTY_FORM = { nome: '', banco: null, tipo: 'conta-corrente', saldo: '' }
+const EMPTY_FORM = { nome: '', banco: null, tipo: 'conta-corrente', saldo: '', limite: '', dia_fechamento: '' }
 
 function fromConta(c) {
-  return { nome: c.nome, banco: c.banco || null, tipo: c.tipo, saldo: String(c.saldo) }
+  return {
+    nome: c.nome, banco: c.banco || null, tipo: c.tipo, saldo: String(c.saldo),
+    limite: c.limite ? String(c.limite) : '',
+    dia_fechamento: c.dia_fechamento ? String(c.dia_fechamento) : '',
+  }
 }
 
 function ContaModal({ open, onClose, conta }) {
@@ -31,7 +35,12 @@ function ContaModal({ open, onClose, conta }) {
 
   const submit = () => {
     if (!form.nome || form.saldo === '') return
-    const data = { ...form, saldo: parseFloat(form.saldo) }
+    const data = {
+      ...form,
+      saldo: parseFloat(form.saldo),
+      limite: form.limite ? parseFloat(form.limite) : null,
+      dia_fechamento: form.dia_fechamento ? parseInt(form.dia_fechamento) : null,
+    }
     if (conta) updateConta(conta.id, data)
     else addConta(data)
     onClose()
@@ -84,6 +93,12 @@ function ContaModal({ open, onClose, conta }) {
         ))}
       </Select>
       <Input label="Saldo Atual (R$)" type="number" placeholder="0,00" step="0.01" value={form.saldo} onChange={e => set('saldo', e.target.value)} />
+      {form.tipo === 'cartao-credito' && (
+        <>
+          <Input label="Limite (R$)" type="number" placeholder="0,00" step="0.01" value={form.limite} onChange={e => set('limite', e.target.value)} />
+          <Input label="Dia de Fechamento" type="number" placeholder="Ex: 10" min={1} max={28} value={form.dia_fechamento} onChange={e => set('dia_fechamento', e.target.value)} />
+        </>
+      )}
 
       <div className="flex gap-2 mt-2">
         <Button onClick={submit} disabled={!form.nome || form.saldo === ''}>{conta ? 'Salvar' : 'Criar'}</Button>

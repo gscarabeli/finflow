@@ -6,6 +6,7 @@ import { Modal, Input, Button } from './UI.jsx'
 const TABS = [
   { id: 'dashboard',    label: 'Dashboard' },
   { id: 'contas',       label: 'Contas' },
+  { id: 'credito',      label: 'Crédito' },
   { id: 'investimentos',label: 'Investimentos' },
   { id: 'apagar',       label: 'A Pagar' },
   { id: 'sonhos',       label: 'Sonhos',        requiresCasal: true },
