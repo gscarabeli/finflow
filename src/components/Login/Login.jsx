@@ -115,9 +115,7 @@ export default function Login() {
   const [cfToken, setCfToken] = useState('')
   const turnstileRef = useRef(null)
 
-  const [hasInvite, setHasInvite] = useState(false)
-
-  // Detect ?verified=true, ?reset=TOKEN, or ?invite=TOKEN in URL
+  // Detect ?verified=true or ?reset=TOKEN in URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('verified') === 'true') {
@@ -128,13 +126,6 @@ export default function Login() {
       setResetToken(params.get('reset'))
       setStep('reset')
       window.history.replaceState({}, '', window.location.pathname)
-    }
-    if (params.get('invite')) {
-      // Keep the invite token in sessionStorage so it survives a register flow
-      sessionStorage.setItem('pendingInvite', params.get('invite'))
-      setHasInvite(true)
-    } else if (sessionStorage.getItem('pendingInvite')) {
-      setHasInvite(true)
     }
   }, [])
 
@@ -272,13 +263,6 @@ export default function Login() {
               }[step]}
             </p>
           </div>
-
-          {/* Invite banner */}
-          {hasInvite && (
-            <Alert type="info">
-              💑 Você foi convidado(a) para conectar finanças no FinFlow! Faça login ou crie sua conta para aceitar.
-            </Alert>
-          )}
 
           {/* Alert */}
           {message && <Alert type={message.type}>{message.text}</Alert>}

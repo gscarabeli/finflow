@@ -72,30 +72,19 @@ function generateTheme(hex) {
 }
 
 export default function App() {
-  const { tab, viewMode, themeByMode, authenticated, initialized, initialize, acceptInvite } = useStore()
+  const { tab, viewMode, themeByMode, authenticated, initialized, initialize } = useStore()
 
   useEffect(() => {
     initialize()
   }, [initialize])
 
   useEffect(() => {
-    const raw = themeByMode[viewMode] || '#16a34a'
+    const raw = themeByMode[viewMode] || themeByMode['solo'] || '#16a34a'
     const hex = LEGACY_THEME_NAMES[raw] || raw
     Object.entries(generateTheme(hex)).forEach(([key, value]) => {
       document.documentElement.style.setProperty(key, value)
     })
   }, [viewMode, themeByMode])
-
-  // Accept couple invite from URL (?invite=TOKEN) or sessionStorage (post-register flow)
-  useEffect(() => {
-    if (!authenticated) return
-    const params = new URLSearchParams(window.location.search)
-    const inviteToken = params.get('invite') || sessionStorage.getItem('pendingInvite')
-    if (!inviteToken) return
-    sessionStorage.removeItem('pendingInvite')
-    window.history.replaceState({}, '', window.location.pathname)
-    acceptInvite(inviteToken).catch(() => {})
-  }, [authenticated])
 
   if (!initialized) {
     return null

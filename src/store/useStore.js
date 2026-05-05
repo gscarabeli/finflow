@@ -22,9 +22,9 @@ import {
   apiCreateConta,
   apiUpdateConta,
   apiDeleteConta,
-  apiInvitePartner,
-  apiAcceptInvite,
-  apiLeaveCouple,
+  apiCreatePartnerProfile,
+  apiUpdatePartnerProfile,
+  apiDeletePartnerProfile,
   apiUpdateProfile,
   apiCreatePagamento,
   apiUpdatePagamento,
@@ -46,11 +46,12 @@ export const useStore = create((set, get) => ({
   // Auth
   authenticated: false,
   authToken: null,
-  currentUser: null, // { id, name, email, coupleId }
+  currentUser: null, // { id, name, email, avatar }
 
   // View
-  // 'solo' = apenas o próprio perfil
-  // 'casal' = visão consolidada com parceiro
+  // 'solo'     = próprio perfil
+  // 'parceiro' = perfil do parceiro
+  // 'casal'    = visão consolidada
   viewMode: 'solo',
   tab: 'dashboard',
   initialized: false,
@@ -61,7 +62,7 @@ export const useStore = create((set, get) => ({
   sonhos: [],
 
   // Theme — stores hex colors; legacy theme names ('default','larissa','casal','sunset') are converted in App.jsx
-  themeByMode: loadSecurely(STORAGE_KEYS.THEME, { solo: '#16a34a', casal: '#0ea5e9' }, true),
+  themeByMode: loadSecurely(STORAGE_KEYS.THEME, { solo: '#16a34a', parceiro: '#ec4899', casal: '#0ea5e9' }, true),
   apiKey: loadSecurely(STORAGE_KEYS.API_KEY || 'finflow_apikey', '', true),
 
   setTab: (tab) => set({ tab }),
@@ -100,7 +101,7 @@ export const useStore = create((set, get) => ({
         myProfile: profileData.eu ?? { ...EMPTY_PROFILE, nome: me.name },
         partnerProfile: profileData.parceiro ?? null,
         sonhos,
-        viewMode: me.coupleId ? 'solo' : 'solo',
+        viewMode: 'solo',
       })
     } catch {
       clearSensitiveData()
@@ -153,26 +154,21 @@ export const useStore = create((set, get) => ({
     })
   },
 
-  // ── Couple ──────────────────────────────────────────────────────────────────
-  invitePartner: async (partnerEmail) => {
-    return apiInvitePartner(partnerEmail)
+  // ── Partner profile ─────────────────────────────────────────────────────────
+  createPartnerProfile: async (nome, avatar) => {
+    const profile = await apiCreatePartnerProfile(nome, avatar)
+    set({ partnerProfile: profile })
+    return profile
   },
 
-  acceptInvite: async (token) => {
-    await apiAcceptInvite(token)
-    // Recarrega dados para pegar o parceiro
-    const profileData = await apiLoadProfileData()
-    const me = await apiValidate()
-    set({
-      currentUser: me,
-      partnerProfile: profileData.parceiro ?? null,
-    })
+  updatePartnerProfileMeta: async (data) => {
+    const updated = await apiUpdatePartnerProfile(data)
+    set(s => ({ partnerProfile: { ...s.partnerProfile, ...updated } }))
   },
 
-  leaveCouple: async () => {
-    await apiLeaveCouple()
-    const me = await apiValidate()
-    set({ currentUser: me, partnerProfile: null, viewMode: 'solo' })
+  removePartnerProfile: async () => {
+    await apiDeletePartnerProfile()
+    set({ partnerProfile: null, viewMode: 'solo' })
   },
 
   updateProfile: async ({ name, email, avatar }) => {
@@ -187,6 +183,10 @@ export const useStore = create((set, get) => ({
   getActiveData: () => {
     const { viewMode, myProfile, partnerProfile } = get()
 
+    if (viewMode === 'parceiro' && partnerProfile) {
+      return partnerProfile
+    }
+
     if (viewMode === 'casal' && partnerProfile) {
       const me = myProfile ?? EMPTY_PROFILE
       const partner = partnerProfile ?? EMPTY_PROFILE
@@ -200,6 +200,7 @@ export const useStore = create((set, get) => ({
       return {
         nome: 'Visão do Casal',
         contas: [...(me.contas ?? []), ...(partner.contas ?? [])],
+        pagamentos: [...(me.pagamentos ?? []), ...(partner.pagamentos ?? [])],
         investimentos: {
           reserva: {
             atual: (me.investimentos?.reserva?.atual ?? 0) + (partner.investimentos?.reserva?.atual ?? 0),
@@ -219,40 +220,75 @@ export const useStore = create((set, get) => ({
 
   // ── Transactions ────────────────────────────────────────────────────────────
   addTransaction: async (tx) => {
-    const transaction = await apiCreateTransaction(tx)
-    set(s => ({ myProfile: { ...s.myProfile, transacoes: [transaction, ...(s.myProfile.transacoes ?? [])] } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const transaction = await apiCreateTransaction(tx, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, transacoes: [transaction, ...(s.partnerProfile?.transacoes ?? [])] } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, transacoes: [transaction, ...(s.myProfile.transacoes ?? [])] } }))
+    }
   },
 
   deleteTransaction: async (id) => {
-    await apiDeleteTransaction(id)
-    set(s => ({ myProfile: { ...s.myProfile, transacoes: s.myProfile.transacoes.filter(t => t.id !== id) } }))
+    const isPartner = get().viewMode === 'parceiro'
+    await apiDeleteTransaction(id, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, transacoes: s.partnerProfile.transacoes.filter(t => t.id !== id) } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, transacoes: s.myProfile.transacoes.filter(t => t.id !== id) } }))
+    }
   },
 
   updateTransaction: async (id, tx) => {
-    const transaction = await apiUpdateTransaction(id, tx)
-    set(s => ({ myProfile: { ...s.myProfile, transacoes: s.myProfile.transacoes.map(t => t.id === id ? transaction : t) } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const transaction = await apiUpdateTransaction(id, tx, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, transacoes: s.partnerProfile.transacoes.map(t => t.id === id ? transaction : t) } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, transacoes: s.myProfile.transacoes.map(t => t.id === id ? transaction : t) } }))
+    }
   },
 
   // ── Contas ──────────────────────────────────────────────────────────────────
   addConta: async (conta) => {
-    const created = await apiCreateConta(conta)
-    set(s => ({ myProfile: { ...s.myProfile, contas: [...(s.myProfile.contas ?? []), created] } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const created = await apiCreateConta(conta, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, contas: [...(s.partnerProfile?.contas ?? []), created] } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, contas: [...(s.myProfile.contas ?? []), created] } }))
+    }
   },
 
   updateConta: async (id, conta) => {
-    const updated = await apiUpdateConta(id, conta)
-    set(s => ({ myProfile: { ...s.myProfile, contas: s.myProfile.contas.map(c => c.id === id ? updated : c) } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const updated = await apiUpdateConta(id, conta, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, contas: s.partnerProfile.contas.map(c => c.id === id ? updated : c) } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, contas: s.myProfile.contas.map(c => c.id === id ? updated : c) } }))
+    }
   },
 
   deleteConta: async (id) => {
-    await apiDeleteConta(id)
-    set(s => ({ myProfile: { ...s.myProfile, contas: s.myProfile.contas.filter(c => c.id !== id) } }))
+    const isPartner = get().viewMode === 'parceiro'
+    await apiDeleteConta(id, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, contas: s.partnerProfile.contas.filter(c => c.id !== id) } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, contas: s.myProfile.contas.filter(c => c.id !== id) } }))
+    }
   },
 
   // ── Investimentos ───────────────────────────────────────────────────────────
   updateInvestimentos: async (inv) => {
-    const updated = await apiUpdateInvestimentos(inv)
-    set(s => ({ myProfile: { ...s.myProfile, investimentos: updated } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const updated = await apiUpdateInvestimentos(inv, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, investimentos: updated } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, investimentos: updated } }))
+    }
   },
 
   // ── Sonhos ──────────────────────────────────────────────────────────────────
@@ -273,18 +309,33 @@ export const useStore = create((set, get) => ({
 
   // ── Pagamentos ──────────────────────────────────────────────────────────────
   addPagamento: async (p) => {
-    const created = await apiCreatePagamento(p)
-    set(s => ({ myProfile: { ...s.myProfile, pagamentos: [...(s.myProfile.pagamentos ?? []), created] } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const created = await apiCreatePagamento(p, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, pagamentos: [...(s.partnerProfile?.pagamentos ?? []), created] } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, pagamentos: [...(s.myProfile.pagamentos ?? []), created] } }))
+    }
   },
 
   updatePagamento: async (id, p) => {
-    const updated = await apiUpdatePagamento(id, p)
-    set(s => ({ myProfile: { ...s.myProfile, pagamentos: (s.myProfile.pagamentos ?? []).map(item => item.id === id ? updated : item) } }))
+    const isPartner = get().viewMode === 'parceiro'
+    const updated = await apiUpdatePagamento(id, p, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, pagamentos: (s.partnerProfile?.pagamentos ?? []).map(item => item.id === id ? updated : item) } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, pagamentos: (s.myProfile.pagamentos ?? []).map(item => item.id === id ? updated : item) } }))
+    }
   },
 
   deletePagamento: async (id) => {
-    await apiDeletePagamento(id)
-    set(s => ({ myProfile: { ...s.myProfile, pagamentos: (s.myProfile.pagamentos ?? []).filter(item => item.id !== id) } }))
+    const isPartner = get().viewMode === 'parceiro'
+    await apiDeletePagamento(id, isPartner)
+    if (isPartner) {
+      set(s => ({ partnerProfile: { ...s.partnerProfile, pagamentos: (s.partnerProfile?.pagamentos ?? []).filter(item => item.id !== id) } }))
+    } else {
+      set(s => ({ myProfile: { ...s.myProfile, pagamentos: (s.myProfile.pagamentos ?? []).filter(item => item.id !== id) } }))
+    }
   },
 
   // ── buildFinancialContext (para IA) ─────────────────────────────────────────

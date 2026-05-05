@@ -87,12 +87,13 @@ function PagamentoModal({ open, onClose, editing }) {
 }
 
 export default function APagar() {
-  const { myProfile, updatePagamento, deletePagamento, viewMode, addTransaction } = useStore()
+  const { getActiveData, updatePagamento, deletePagamento, viewMode, addTransaction } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing]     = useState(null)
 
+  const pd = getActiveData()
   const isCasal = viewMode === 'casal'
-  const pagamentos = (myProfile.pagamentos ?? []).slice().sort((a, b) => a.vencimento.localeCompare(b.vencimento))
+  const pagamentos = (pd.pagamentos ?? []).slice().sort((a, b) => (a.vencimento || '').localeCompare(b.vencimento || ''))
 
   const today = new Date().toISOString().split('T')[0]
 

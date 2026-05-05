@@ -19,13 +19,13 @@ function fromEditingTx(tx) {
 }
 
 export default function AddTxModal({ open, onClose, editingTx, initialCartaoId }) {
-  const { addTransaction, updateTransaction, myProfile } = useStore()
+  const { addTransaction, updateTransaction, getActiveData } = useStore()
   const isEdit = !!editingTx
   const [form, setForm] = useState(editingTx ? fromEditingTx(editingTx) : { ...EMPTY_TX_FORM })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
-  const cartoes = (myProfile?.contas ?? []).filter(c => CARD_TYPES.includes(c.tipo))
+  const cartoes = (getActiveData()?.contas ?? []).filter(c => CARD_TYPES.includes(c.tipo))
 
   React.useEffect(() => {
     if (open) {

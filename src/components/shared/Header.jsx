@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { UserPlus, Loader, Calculator, Delete } from 'lucide-react'
+import { UserPlus, Loader, Calculator, Delete, UserMinus } from 'lucide-react'
 import { useStore } from '../../store/useStore.js'
 import { Modal, Input, Button } from './UI.jsx'
 
@@ -238,102 +238,115 @@ function ProfileModal({ open, onClose }) {
   )
 }
 
-// ─── InviteModal ──────────────────────────────────────────────────────────────
-function InviteModal({ open, onClose }) {
-  const { invitePartner } = useStore()
-  const [email, setEmail] = useState('')
+// ─── AddPartnerModal ──────────────────────────────────────────────────────────
+function AddPartnerModal({ open, onClose }) {
+  const { createPartnerProfile } = useStore()
+  const [nome, setNome]   = useState('')
+  const [avatar, setAvatar] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState(null) // { emailSent, inviteUrl } | null
-  const [error, setError] = useState(null)
-  const [copied, setCopied] = useState(false)
+  const [error, setError]   = useState(null)
+  const fileRef = useRef(null)
 
-  function handleClose() { setEmail(''); setResult(null); setError(null); setCopied(false); setLoading(false); onClose() }
+  function handleClose() { setNome(''); setAvatar(null); setError(null); setLoading(false); onClose() }
+
+  async function handleFileChange(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) { setError('Arquivo muito grande. Máximo 5 MB.'); return }
+    setError(null)
+    const resized = await resizeImage(file)
+    setAvatar(resized)
+  }
 
   async function submit() {
-    if (!email) return
-    setLoading(true); setError(null); setResult(null)
+    if (!nome.trim()) return
+    setLoading(true); setError(null)
     try {
-      const res = await invitePartner(email)
-      setResult(res)
+      await createPartnerProfile(nome.trim(), avatar)
+      handleClose()
     } catch (err) {
-      setError(err.message || 'Erro ao gerar convite.')
+      setError(err.message || 'Erro ao criar perfil.')
     } finally {
       setLoading(false)
     }
   }
 
-  function copyLink() {
-    if (!result?.inviteUrl) return
-    navigator.clipboard.writeText(result.inviteUrl).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  const done = !!result
+  const initials = nome.trim() ? nome.trim().split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() : '?'
 
   return (
-    <Modal open={open} onClose={handleClose} title="Convidar Parceiro(a)">
+    <Modal open={open} onClose={handleClose} title="Adicionar Parceiro(a)">
       <p className="text-xs mb-4" style={{ color: 'var(--text3)' }}>
-        Informe o e-mail do(a) seu(sua) parceiro(a). Se ela ainda não tiver conta, o link vai direcionar para o cadastro.
+        Crie um perfil para seu(sua) parceiro(a) nesta conta. Você poderá gerenciar os dados dele(a) e ver a visão consolidada do casal.
       </p>
 
-      {!done && (
-        <>
-          <Input
-            label="E-mail do(a) parceiro(a)"
-            type="email"
-            placeholder="parceiro@email.com"
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); setError(null) }}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-          />
-          {error && (
-            <div className="text-xs mb-3 p-2.5 rounded-lg border" style={{
-              background: 'var(--red-bg)', color: 'var(--red)', borderColor: 'var(--red)',
-            }}>
-              {error}
-            </div>
-          )}
-          <div className="flex gap-2 mt-1">
-            <Button onClick={submit} disabled={loading || !email}>
-              {loading ? <><Loader size={13} className="inline animate-spin mr-1.5" />Gerando...</> : 'Enviar convite'}
-            </Button>
-            <Button variant="ghost" onClick={handleClose}>Cancelar</Button>
+      {/* Avatar */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 20 }}>
+        <div
+          onClick={() => fileRef.current?.click()}
+          style={{ cursor: 'pointer', borderRadius: '50%', position: 'relative' }}
+          title="Adicionar foto"
+        >
+          <div style={{
+            width: 72, height: 72, borderRadius: '50%',
+            background: avatar ? 'transparent' : 'var(--blue-bg)',
+            border: '2px solid var(--border2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            {avatar
+              ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--blue)', lineHeight: 1 }}>{initials}</span>
+            }
           </div>
-        </>
-      )}
-
-      {done && (
-        <div className="flex flex-col gap-3">
-          {result.emailSent ? (
-            <div className="text-xs p-2.5 rounded-lg border" style={{ background: 'var(--green-bg)', color: 'var(--green)', borderColor: 'var(--green)' }}>
-              E-mail enviado para <strong>{email}</strong>! O link é válido por 48 horas.
-            </div>
-          ) : (
-            <div className="text-xs p-2.5 rounded-lg border" style={{ background: 'var(--amber-bg)', color: 'var(--amber)', borderColor: 'var(--amber)' }}>
-              Não foi possível enviar o e-mail automaticamente. Copie o link abaixo e envie diretamente para a pessoa.
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs mb-1.5 font-medium" style={{ color: 'var(--text3)' }}>Link de convite</label>
-            <div className="flex gap-2">
-              <input
-                readOnly
-                value={result.inviteUrl}
-                className="flex-1 rounded-xl border px-3 py-2 text-xs outline-none"
-                style={{ background: 'var(--bg3)', borderColor: 'var(--border)', color: 'var(--text2)' }}
-              />
-              <Button onClick={copyLink} size="sm">
-                {copied ? '✓ Copiado' : 'Copiar'}
-              </Button>
-            </div>
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.45)', opacity: 0, transition: 'opacity 0.15s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, color: '#fff', fontWeight: 600,
+          }}
+            onMouseEnter={e => e.currentTarget.style.opacity = 1}
+            onMouseLeave={e => e.currentTarget.style.opacity = 0}
+          >
+            Foto
           </div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button onClick={() => fileRef.current?.click()}
+            style={{ fontSize: 11, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            {avatar ? 'Trocar foto' : 'Adicionar foto'}
+          </button>
+          {avatar && (
+            <button onClick={() => setAvatar(null)}
+              style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Remover
+            </button>
+          )}
+        </div>
+      </div>
 
-          <Button variant="ghost" onClick={handleClose}>Fechar</Button>
+      <Input
+        label="Nome do(a) parceiro(a)"
+        placeholder="Ex: Larissa, João..."
+        value={nome}
+        onChange={e => { setNome(e.target.value); setError(null) }}
+        onKeyDown={e => e.key === 'Enter' && submit()}
+      />
+
+      {error && (
+        <div className="text-xs mb-3 p-2.5 rounded-lg border" style={{
+          background: 'var(--red-bg)', color: 'var(--red)', borderColor: 'var(--red)',
+        }}>
+          {error}
         </div>
       )}
+
+      <div className="flex gap-2 mt-1">
+        <Button onClick={submit} disabled={loading || !nome.trim()}>
+          {loading ? <><Loader size={13} className="inline animate-spin mr-1.5" />Criando...</> : 'Criar perfil'}
+        </Button>
+        <Button variant="ghost" onClick={handleClose}>Cancelar</Button>
+      </div>
     </Modal>
   )
 }
@@ -508,11 +521,26 @@ function CalculatorWidget() {
 
 // ─── Header ───────────────────────────────────────────────────────────────────
 export default function Header() {
-  const { tab, viewMode, themeByMode, setTab, setViewMode, setTheme, authenticated, logout, partnerProfile, currentUser } = useStore()
-  const [showInvite, setShowInvite]   = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
+  const { tab, viewMode, themeByMode, setTab, setViewMode, setTheme, authenticated, logout, partnerProfile, currentUser, removePartnerProfile } = useStore()
+  const [showAddPartner, setShowAddPartner] = useState(false)
+  const [showProfile, setShowProfile]       = useState(false)
+  const [removingPartner, setRemovingPartner] = useState(false)
 
   const hasPartner = !!partnerProfile
+
+  const VIEW_MODES = hasPartner
+    ? [
+        { id: 'solo',     label: currentUser?.name || 'Eu' },
+        { id: 'parceiro', label: partnerProfile?.nome || 'Parceiro(a)' },
+        { id: 'casal',    label: 'Casal' },
+      ]
+    : []
+
+  async function handleRemovePartner() {
+    if (!confirm(`Remover o perfil de ${partnerProfile?.nome}? Todos os dados dele(a) serão apagados.`)) return
+    setRemovingPartner(true)
+    try { await removePartnerProfile() } finally { setRemovingPartner(false) }
+  }
 
   return (
     <header className="sticky top-0 z-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 sm:px-6"
@@ -543,30 +571,39 @@ export default function Header() {
       {/* Right side */}
       <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto justify-center sm:justify-start">
 
-        {/* View mode toggle OR invite button */}
+        {/* View mode toggle (3-way) OR add partner button */}
         {hasPartner ? (
           <>
-            {['solo', 'casal'].map((id) => (
+            {VIEW_MODES.map(({ id, label }) => (
               <button
                 key={id}
                 onClick={() => setViewMode(id)}
-                className="rounded-lg border-0 cursor-pointer transition-all duration-150 text-xs font-semibold px-3 py-1.5 capitalize"
+                className="rounded-lg border-0 cursor-pointer transition-all duration-150 text-xs font-semibold px-3 py-1.5"
                 style={viewMode === id
                   ? { background: 'var(--blue)', color: '#fff' }
                   : { background: 'transparent', color: 'var(--text3)', border: '1px solid var(--border)' }}
               >
-                {id === 'solo' ? (currentUser?.name || 'Solo') : 'Casal'}
+                {label}
               </button>
             ))}
+            <button
+              onClick={handleRemovePartner}
+              disabled={removingPartner}
+              title={`Remover perfil de ${partnerProfile?.nome}`}
+              className="flex items-center rounded-lg border-0 cursor-pointer transition-all duration-150 text-xs px-2 py-1.5"
+              style={{ background: 'transparent', color: 'var(--text3)', border: '1px solid var(--border)' }}
+            >
+              <UserMinus size={13} />
+            </button>
           </>
         ) : (
           <button
-            onClick={() => setShowInvite(true)}
+            onClick={() => setShowAddPartner(true)}
             className="flex items-center gap-1.5 rounded-lg border-0 cursor-pointer transition-all duration-150 text-xs font-semibold px-3 py-1.5"
             style={{ background: 'transparent', color: 'var(--blue)', border: '1px solid var(--border)' }}
           >
             <UserPlus size={13} />
-            Convidar parceiro(a)
+            Adicionar parceiro(a)
           </button>
         )}
 
@@ -577,7 +614,7 @@ export default function Header() {
 
         {/* Color picker */}
         <ColorPicker
-          value={themeByMode[viewMode]}
+          value={themeByMode[viewMode] || themeByMode['solo']}
           onChange={setTheme}
         />
 
@@ -588,7 +625,7 @@ export default function Header() {
             title="Meu perfil"
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', borderRadius: '50%' }}
           >
-            <AvatarCircle user={currentUser} size={30} />
+            <AvatarCircle user={viewMode === 'parceiro' ? { name: partnerProfile?.nome, avatar: partnerProfile?.avatar } : currentUser} size={30} />
           </button>
         )}
 
@@ -604,8 +641,8 @@ export default function Header() {
         )}
       </div>
 
-      <InviteModal  open={showInvite}   onClose={() => setShowInvite(false)} />
-      <ProfileModal open={showProfile}  onClose={() => setShowProfile(false)} />
+      <AddPartnerModal open={showAddPartner} onClose={() => setShowAddPartner(false)} />
+      <ProfileModal    open={showProfile}    onClose={() => setShowProfile(false)} />
     </header>
   )
 }

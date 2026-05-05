@@ -50,12 +50,6 @@ async function initDB() {
       sonhos         JSONB NOT NULL DEFAULT '[]',
       created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    CREATE TABLE IF NOT EXISTS couples (
-      id         TEXT PRIMARY KEY,
-      members    TEXT[] NOT NULL,
-      sonhos     JSONB NOT NULL DEFAULT '[]',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
     CREATE TABLE IF NOT EXISTS pending_tokens (
       token         TEXT PRIMARY KEY,
       type          TEXT NOT NULL,
@@ -65,6 +59,7 @@ async function initDB() {
     );
   `)
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT`)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_data JSONB DEFAULT NULL`)
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
@@ -76,17 +71,12 @@ function mapUser(row) {
     email:         row.email,
     passwordHash:  row.password_hash,
     emailVerified: row.email_verified,
-    coupleId:      row.couple_id,
     avatar:        row.avatar || null,
     profile:       row.profile || {},
+    partnerData:   row.partner_data || null,
     sonhos:        row.sonhos  || [],
     createdAt:     row.created_at,
   }
-}
-
-function mapCouple(row) {
-  if (!row) return null
-  return { id: row.id, members: row.members, sonhos: row.sonhos || [], createdAt: row.created_at }
 }
 
 async function getUserById(id) {
@@ -97,11 +87,6 @@ async function getUserById(id) {
 async function getUserByEmail(email) {
   const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email])
   return mapUser(rows[0])
-}
-
-async function getCoupleById(id) {
-  const { rows } = await pool.query('SELECT * FROM couples WHERE id = $1', [id])
-  return mapCouple(rows[0])
 }
 
 async function getToken(token, type) {
@@ -120,20 +105,25 @@ async function deleteTokensByUserAndType(userId, type) {
   await pool.query('DELETE FROM pending_tokens WHERE user_id = $1 AND type = $2', [userId, type])
 }
 
-// Retorna os sonhos do dono (casal ou usuário solo) + função para salvar
 async function getSonhosOwner(userId) {
   const user = await getUserById(userId)
-  if (user.coupleId) {
-    const couple = await getCoupleById(user.coupleId)
-    return {
-      sonhos: couple.sonhos || [],
-      save: (sonhos) => pool.query('UPDATE couples SET sonhos = $1 WHERE id = $2', [JSON.stringify(sonhos), user.coupleId]),
-    }
-  }
   return {
     sonhos: user.sonhos || [],
     save: (sonhos) => pool.query('UPDATE users SET sonhos = $1 WHERE id = $2', [JSON.stringify(sonhos), userId]),
   }
+}
+
+async function getProfileTarget(userId, isPartner) {
+  const user = await getUserById(userId)
+  const profile = isPartner ? (user.partnerData || {}) : user.profile
+  const save = async (data) => {
+    if (isPartner) {
+      await pool.query('UPDATE users SET partner_data = $1 WHERE id = $2', [JSON.stringify(data), userId])
+    } else {
+      await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(data), userId])
+    }
+  }
+  return { user, profile, save }
 }
 
 // ─── Turnstile ────────────────────────────────────────────────────────────────
@@ -301,16 +291,6 @@ function passwordResetTemplate(name, url) {
   </div>`
 }
 
-function coupleInviteTemplate(inviterName, inviteeName, url) {
-  return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0d0f14;color:#e8eaf0;border-radius:16px">
-    <h1 style="color:#3b82f6;font-size:24px;margin-bottom:8px">fin<span style="color:#e8eaf0">.</span>flow</h1>
-    <h2 style="font-size:18px;margin-bottom:16px">Convite para o Casal 💑</h2>
-    <p style="color:#9aa0b8;margin-bottom:24px">Olá, ${inviteeName}! <strong style="color:#e8eaf0">${inviterName}</strong> te convidou para gerenciar as finanças do casal juntos no FinFlow.</p>
-    <a href="${url}" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600">Aceitar convite</a>
-    <p style="color:#5c6380;font-size:12px;margin-top:24px">Link válido por 48 horas.</p>
-  </div>`
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 //  AUTH ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -422,13 +402,13 @@ app.post('/api/auth/login', rateLimit(10), async (req, res) => {
     return res.status(403).json({ error: 'E-mail não verificado. Verifique sua caixa de entrada.', code: 'EMAIL_NOT_VERIFIED' })
 
   const token = signJWT({ userId: user.id, email: user.email })
-  return res.json({ token, user: { id: user.id, name: user.name, email: user.email, coupleId: user.coupleId, avatar: user.avatar } })
+  return res.json({ token, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } })
 })
 
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   const user = await getUserById(req.user.userId)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
-  return res.json({ id: user.id, name: user.name, email: user.email, coupleId: user.coupleId, avatar: user.avatar })
+  return res.json({ id: user.id, name: user.name, email: user.email, avatar: user.avatar })
 })
 
 app.put('/api/auth/profile', authMiddleware, async (req, res) => {
@@ -459,7 +439,7 @@ app.put('/api/auth/profile', authMiddleware, async (req, res) => {
 
   const { rows: updated } = await pool.query('SELECT * FROM users WHERE id = $1', [userId])
   const u = mapUser(updated[0])
-  return res.json({ id: u.id, name: u.name, email: u.email, coupleId: u.coupleId, avatar: u.avatar })
+  return res.json({ id: u.id, name: u.name, email: u.email, avatar: u.avatar })
 })
 
 app.post('/api/auth/forgot-password', rateLimit(3), honeypot, async (req, res) => {
@@ -523,106 +503,64 @@ app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  COUPLE ROUTES
+//  PARTNER PROFILE ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/couple/invite', authMiddleware, rateLimit(3), honeypot, async (req, res) => {
-  const { partnerEmail } = req.body
-  if (!partnerEmail || !isValidEmail(partnerEmail))
-    return res.status(400).json({ error: 'E-mail do parceiro inválido' })
-  if (isEmailOnCooldown(partnerEmail))
-    return res.status(429).json({ error: 'Aguarde 1 minuto antes de enviar outro convite.' })
+app.post('/api/partner/profile', authMiddleware, async (req, res) => {
+  const { nome, avatar } = req.body
+  if (!nome?.trim()) return res.status(400).json({ error: 'Nome é obrigatório' })
+  if (avatar && avatar.length > 700_000) return res.status(400).json({ error: 'Imagem muito grande.' })
 
-  const inviter = await getUserById(req.user.userId)
-  if (inviter.coupleId) return res.status(400).json({ error: 'Você já faz parte de um casal' })
-  if (inviter.email === partnerEmail.toLowerCase().trim())
-    return res.status(400).json({ error: 'Você não pode se convidar' })
-
-  const partner     = await getUserByEmail(partnerEmail.toLowerCase().trim())
-  const partnerName = partner?.name || partnerEmail.split('@')[0]
-  if (partner?.coupleId) return res.status(400).json({ error: 'Este usuário já faz parte de um casal' })
-
-  await deleteTokensByUserAndType(inviter.id, 'invite')
-
-  const token   = generateToken()
-  const expires = Date.now() + 48 * 60 * 60 * 1000
-  await pool.query(
-    `INSERT INTO pending_tokens (token, type, user_id, partner_email, expires_at) VALUES ($1, 'invite', $2, $3, $4)`,
-    [token, inviter.id, partnerEmail.toLowerCase().trim(), expires]
-  )
-
-  const inviteUrl = partner
-    ? `${APP_URL}/?invite=${token}`
-    : `${APP_URL}/?invite=${token}&register=true`
-
-  let emailSent = false
-  try {
-    const result = await resend.emails.send({
-      from: FROM_EMAIL, to: partnerEmail.toLowerCase().trim(),
-      subject: `${inviter.name} te convidou para o FinFlow 💑`,
-      html: coupleInviteTemplate(inviter.name, partnerName, inviteUrl),
-    })
-    if (!result?.error) {
-      emailSent = true
-      markEmailSent(partnerEmail)
-    }
-  } catch {}
-
-  return res.json({ message: 'Convite gerado!', emailSent, inviteUrl })
-})
-
-app.post('/api/couple/accept', authMiddleware, async (req, res) => {
-  const { token } = req.body
-  if (!token) return res.status(400).json({ error: 'Token obrigatório' })
-
-  const invite = await getToken(token, 'invite')
-  if (!invite) return res.status(400).json({ error: 'Convite inválido ou já utilizado' })
-  if (Date.now() > invite.expires_at) {
-    await deleteToken(token)
-    return res.status(400).json({ error: 'Convite expirado. Peça um novo convite.' })
-  }
-
-  const accepter = await getUserById(req.user.userId)
-  const inviter  = await getUserById(invite.user_id)
-
-  if (!inviter)          return res.status(400).json({ error: 'Quem enviou o convite não existe mais' })
-  if (accepter.coupleId) return res.status(400).json({ error: 'Você já faz parte de um casal' })
-  if (inviter.coupleId)  return res.status(400).json({ error: 'Quem te convidou já faz parte de outro casal' })
-
-  const coupleId = `couple_${Date.now()}`
-  await pool.query(
-    `INSERT INTO couples (id, members, sonhos) VALUES ($1, $2, '[]')`,
-    [coupleId, [inviter.id, accepter.id]]
-  )
-  await pool.query('UPDATE users SET couple_id = $1 WHERE id = ANY($2)', [coupleId, [inviter.id, accepter.id]])
-  await deleteToken(token)
-  return res.json({ message: 'Casal formado com sucesso!', coupleId })
-})
-
-app.delete('/api/couple', authMiddleware, async (req, res) => {
   const user = await getUserById(req.user.userId)
-  if (!user.coupleId) return res.status(400).json({ error: 'Você não faz parte de um casal' })
+  if (user.partnerData) return res.status(400).json({ error: 'Perfil do parceiro já existe' })
 
-  const couple = await getCoupleById(user.coupleId)
-  if (couple) {
-    await pool.query('UPDATE users SET couple_id = NULL WHERE id = ANY($1)', [couple.members])
-    await pool.query('DELETE FROM couples WHERE id = $1', [user.coupleId])
+  const partnerProfile = {
+    nome: sanitize(nome.trim()),
+    avatar: avatar ?? null,
+    contas: [],
+    transacoes: [],
+    pagamentos: [],
+    investimentos: { reserva: { atual: 0, meta: 0 }, previdencia: 0, acoes: 0, fundos: 0, cdi: 0 },
   }
-  return res.json({ message: 'Você saiu do casal.' })
+  await pool.query('UPDATE users SET partner_data = $1 WHERE id = $2', [JSON.stringify(partnerProfile), req.user.userId])
+  return res.json(partnerProfile)
+})
+
+app.patch('/api/partner/profile', authMiddleware, async (req, res) => {
+  const { nome, avatar } = req.body
+  const user = await getUserById(req.user.userId)
+  if (!user.partnerData) return res.status(404).json({ error: 'Perfil do parceiro não encontrado' })
+  if (avatar && avatar.length > 700_000) return res.status(400).json({ error: 'Imagem muito grande.' })
+
+  const updated = {
+    ...user.partnerData,
+    nome: nome ? sanitize(nome.trim()) : user.partnerData.nome,
+    avatar: avatar !== undefined ? (avatar ?? null) : user.partnerData.avatar,
+  }
+  await pool.query('UPDATE users SET partner_data = $1 WHERE id = $2', [JSON.stringify(updated), req.user.userId])
+  return res.json({ nome: updated.nome, avatar: updated.avatar })
+})
+
+app.delete('/api/partner/profile', authMiddleware, async (req, res) => {
+  await pool.query('UPDATE users SET partner_data = NULL WHERE id = $1', [req.user.userId])
+  return res.json({ success: true })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  PROFILE ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Processes scheduled transactions whose date has arrived — removes the agendada flag
-async function processScheduledTransactions(userId, profile) {
+async function processScheduledTransactions(userId, profile, isPartner = false) {
   const today = new Date().toISOString().split('T')[0]
   const txs = profile.transacoes || []
   const updated = txs.map(t => (t.agendada && t.data <= today) ? { ...t, agendada: false } : t)
   if (updated.some((t, i) => t !== txs[i])) {
     const newProfile = { ...profile, transacoes: updated }
-    await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(newProfile), userId])
+    if (isPartner) {
+      await pool.query('UPDATE users SET partner_data = $1 WHERE id = $2', [JSON.stringify(newProfile), userId])
+    } else {
+      await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(newProfile), userId])
+    }
     return newProfile
   }
   return profile
@@ -632,18 +570,14 @@ app.get('/api/profile', authMiddleware, async (req, res) => {
   let user = await getUserById(req.user.userId)
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' })
 
-  user = { ...user, profile: await processScheduledTransactions(user.id, user.profile) }
+  const myProfile = await processScheduledTransactions(user.id, user.profile, false)
+  const response  = { eu: myProfile }
 
-  if (user.coupleId) {
-    const couple  = await getCoupleById(user.coupleId)
-    const members = await Promise.all(couple.members.map(id => getUserById(id)))
-    const me      = members.find(m => m.id === user.id)
-    const partner = members.find(m => m.id !== user.id)
-    const meProfile = await processScheduledTransactions(me.id, me.profile)
-    return res.json({ eu: meProfile, parceiro: partner?.profile ?? null })
+  if (user.partnerData) {
+    response.parceiro = await processScheduledTransactions(user.id, user.partnerData, true)
   }
 
-  return res.json({ eu: user.profile })
+  return res.json(response)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -687,58 +621,60 @@ app.delete('/api/sonhos/:id', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post('/api/transactions', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
   const data = req.body
 
   if (!data?.desc || typeof data.valor !== 'number' || !data.tipo || !data.cat || !data.data)
     return res.status(400).json({ error: 'Dados da transação inválidos' })
 
-  const tx      = { ...data, desc: sanitize(data.desc), cat: sanitize(data.cat), id: `t${Date.now()}` }
-  const profile = { ...user.profile }
+  const tx = { ...data, desc: sanitize(data.desc), cat: sanitize(data.cat), id: `t${Date.now()}` }
+  const newProfile = { ...profile }
 
   if (data.contaId) {
-    const ci = profile.contas.findIndex(c => c.id === data.contaId)
-    if (ci !== -1) profile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
+    const ci = (newProfile.contas || []).findIndex(c => c.id === data.contaId)
+    if (ci !== -1) newProfile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
   }
 
-  profile.transacoes = [tx, ...(profile.transacoes || [])]
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  newProfile.transacoes = [tx, ...(newProfile.transacoes || [])]
+  await save(newProfile)
   return res.json(tx)
 })
 
 app.put('/api/transactions/:id', authMiddleware, async (req, res) => {
-  const user    = await getUserById(req.user.userId)
-  const profile = { ...user.profile }
-  const idx     = profile.transacoes.findIndex(t => t.id === req.params.id)
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  const newProfile = { ...profile }
+  const idx = (newProfile.transacoes || []).findIndex(t => t.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Transação não encontrada' })
 
-  const old  = profile.transacoes[idx]
+  const old  = newProfile.transacoes[idx]
   const data = req.body
 
   if (old.contaId) {
-    const ci = profile.contas.findIndex(c => c.id === old.contaId)
-    if (ci !== -1) profile.contas[ci].saldo += old.tipo === 'entrada' ? -old.valor : old.valor
+    const ci = (newProfile.contas || []).findIndex(c => c.id === old.contaId)
+    if (ci !== -1) newProfile.contas[ci].saldo += old.tipo === 'entrada' ? -old.valor : old.valor
   }
   if (data.contaId) {
-    const ci = profile.contas.findIndex(c => c.id === data.contaId)
-    if (ci !== -1) profile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
+    const ci = (newProfile.contas || []).findIndex(c => c.id === data.contaId)
+    if (ci !== -1) newProfile.contas[ci].saldo += data.tipo === 'entrada' ? data.valor : -data.valor
   }
 
-  profile.transacoes[idx] = {
+  newProfile.transacoes[idx] = {
     ...old, ...data,
     desc: sanitize(data.desc || old.desc),
     cat:  sanitize(data.cat  || old.cat),
     updatedAt: new Date().toISOString(),
   }
 
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
-  return res.json(profile.transacoes[idx])
+  await save(newProfile)
+  return res.json(newProfile.transacoes[idx])
 })
 
 app.delete('/api/transactions/:id', authMiddleware, async (req, res) => {
-  const user    = await getUserById(req.user.userId)
-  const profile = { ...user.profile, transacoes: user.profile.transacoes.filter(t => t.id !== req.params.id) }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  await save({ ...profile, transacoes: (profile.transacoes || []).filter(t => t.id !== req.params.id) })
   return res.json({ success: true })
 })
 
@@ -747,10 +683,11 @@ app.delete('/api/transactions/:id', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.put('/api/investimentos', authMiddleware, async (req, res) => {
-  const user    = await getUserById(req.user.userId)
-  const profile = { ...user.profile, investimentos: { ...user.profile.investimentos, ...req.body } }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
-  return res.json(profile.investimentos)
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  const newProfile = { ...profile, investimentos: { ...profile.investimentos, ...req.body } }
+  await save(newProfile)
+  return res.json(newProfile.investimentos)
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -758,41 +695,43 @@ app.put('/api/investimentos', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/contas', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
-  return res.json({ contas: user.profile.contas || [] })
+  const isPartner = req.query.profile === 'partner'
+  const { profile } = await getProfileTarget(req.user.userId, isPartner)
+  return res.json({ contas: profile.contas || [] })
 })
 
 app.post('/api/contas', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
   const data = req.body
   if (!data?.nome || !data?.tipo || typeof data.saldo !== 'number')
     return res.status(400).json({ error: 'Dados da conta inválidos' })
 
-  const conta   = { ...data, nome: sanitize(data.nome), id: `c${Date.now()}`, createdAt: new Date().toISOString() }
-  const profile = { ...user.profile, contas: [...(user.profile.contas || []), conta] }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  const conta = { ...data, nome: sanitize(data.nome), id: `c${Date.now()}`, createdAt: new Date().toISOString() }
+  await save({ ...profile, contas: [...(profile.contas || []), conta] })
   return res.json(conta)
 })
 
 app.put('/api/contas/:id', authMiddleware, async (req, res) => {
-  const user    = await getUserById(req.user.userId)
-  const profile = { ...user.profile }
-  const idx     = profile.contas.findIndex(c => c.id === req.params.id)
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  const newProfile = { ...profile }
+  const idx = (newProfile.contas || []).findIndex(c => c.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Conta não encontrada' })
 
-  profile.contas[idx] = {
-    ...profile.contas[idx], ...req.body,
-    nome: sanitize(req.body.nome || profile.contas[idx].nome),
+  newProfile.contas[idx] = {
+    ...newProfile.contas[idx], ...req.body,
+    nome: sanitize(req.body.nome || newProfile.contas[idx].nome),
     updatedAt: new Date().toISOString(),
   }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
-  return res.json(profile.contas[idx])
+  await save(newProfile)
+  return res.json(newProfile.contas[idx])
 })
 
 app.delete('/api/contas/:id', authMiddleware, async (req, res) => {
-  const user    = await getUserById(req.user.userId)
-  const profile = { ...user.profile, contas: user.profile.contas.filter(c => c.id !== req.params.id) }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  await save({ ...profile, contas: (profile.contas || []).filter(c => c.id !== req.params.id) })
   return res.json({ success: true })
 })
 
@@ -801,28 +740,29 @@ app.delete('/api/contas/:id', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post('/api/pagamentos', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
   const data = req.body
-  if (!data?.nome || typeof data.valor !== 'number' || !data?.vencimento)
+  if (!data?.nome || typeof data.valor !== 'number')
     return res.status(400).json({ error: 'Dados inválidos' })
 
   const item = {
     id: `pay${Date.now()}`,
     nome: sanitize(data.nome),
     valor: data.valor,
-    vencimento: data.vencimento,
+    vencimento: data.vencimento || '',
     pago: false,
     categoria: sanitize(data.categoria || 'Outros'),
     createdAt: new Date().toISOString(),
   }
-  const profile = { ...user.profile, pagamentos: [...(user.profile.pagamentos || []), item] }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  await save({ ...profile, pagamentos: [...(profile.pagamentos || []), item] })
   return res.json(item)
 })
 
 app.put('/api/pagamentos/:id', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
-  const pagamentos = [...(user.profile.pagamentos || [])]
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  const pagamentos = [...(profile.pagamentos || [])]
   const idx = pagamentos.findIndex(p => p.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Pagamento não encontrado' })
 
@@ -832,15 +772,14 @@ app.put('/api/pagamentos/:id', authMiddleware, async (req, res) => {
     categoria: sanitize(req.body.categoria || pagamentos[idx].categoria),
     updatedAt: new Date().toISOString(),
   }
-  const profile = { ...user.profile, pagamentos }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  await save({ ...profile, pagamentos })
   return res.json(pagamentos[idx])
 })
 
 app.delete('/api/pagamentos/:id', authMiddleware, async (req, res) => {
-  const user = await getUserById(req.user.userId)
-  const profile = { ...user.profile, pagamentos: (user.profile.pagamentos || []).filter(p => p.id !== req.params.id) }
-  await pool.query('UPDATE users SET profile = $1 WHERE id = $2', [JSON.stringify(profile), user.id])
+  const isPartner = req.query.profile === 'partner'
+  const { profile, save } = await getProfileTarget(req.user.userId, isPartner)
+  await save({ ...profile, pagamentos: (profile.pagamentos || []).filter(p => p.id !== req.params.id) })
   return res.json({ success: true })
 })
 

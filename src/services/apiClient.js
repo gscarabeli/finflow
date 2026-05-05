@@ -81,23 +81,17 @@ export async function apiChangePassword(currentPassword, newPassword) {
   })
 }
 
-// ─── Couple ───────────────────────────────────────────────────────────────────
-export async function apiInvitePartner(partnerEmail) {
-  return apiFetch('/couple/invite', {
-    method: 'POST',
-    body: JSON.stringify({ partnerEmail }),
-  })
+// ─── Partner profile ──────────────────────────────────────────────────────────
+export async function apiCreatePartnerProfile(nome, avatar) {
+  return apiFetch('/partner/profile', { method: 'POST', body: JSON.stringify({ nome, avatar }) })
 }
 
-export async function apiAcceptInvite(token) {
-  return apiFetch('/couple/accept', {
-    method: 'POST',
-    body: JSON.stringify({ token }),
-  })
+export async function apiUpdatePartnerProfile(data) {
+  return apiFetch('/partner/profile', { method: 'PATCH', body: JSON.stringify(data) })
 }
 
-export async function apiLeaveCouple() {
-  return apiFetch('/couple', { method: 'DELETE' })
+export async function apiDeletePartnerProfile() {
+  return apiFetch('/partner/profile', { method: 'DELETE' })
 }
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
@@ -123,38 +117,46 @@ export async function apiDeleteSonho(id) {
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
-export async function apiCreateTransaction(transaction) {
-  return apiFetch('/transactions', { method: 'POST', body: JSON.stringify(transaction) })
+export async function apiCreateTransaction(transaction, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/transactions${qs}`, { method: 'POST', body: JSON.stringify(transaction) })
 }
 
-export async function apiDeleteTransaction(id) {
-  return apiFetch(`/transactions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export async function apiDeleteTransaction(id, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/transactions/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' })
 }
 
-export async function apiUpdateTransaction(id, transaction) {
-  return apiFetch(`/transactions/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(transaction) })
+export async function apiUpdateTransaction(id, transaction, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/transactions/${encodeURIComponent(id)}${qs}`, { method: 'PUT', body: JSON.stringify(transaction) })
 }
 
 // ─── Investimentos ────────────────────────────────────────────────────────────
-export async function apiUpdateInvestimentos(investimentos) {
-  return apiFetch('/investimentos', { method: 'PUT', body: JSON.stringify(investimentos) })
+export async function apiUpdateInvestimentos(investimentos, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/investimentos${qs}`, { method: 'PUT', body: JSON.stringify(investimentos) })
 }
 
 // ─── Contas ───────────────────────────────────────────────────────────────────
-export async function apiLoadContas() {
-  return apiFetch('/contas')
+export async function apiLoadContas(isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/contas${qs}`)
 }
 
-export async function apiCreateConta(conta) {
-  return apiFetch('/contas', { method: 'POST', body: JSON.stringify(conta) })
+export async function apiCreateConta(conta, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/contas${qs}`, { method: 'POST', body: JSON.stringify(conta) })
 }
 
-export async function apiUpdateConta(id, conta) {
-  return apiFetch(`/contas/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(conta) })
+export async function apiUpdateConta(id, conta, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/contas/${encodeURIComponent(id)}${qs}`, { method: 'PUT', body: JSON.stringify(conta) })
 }
 
-export async function apiDeleteConta(id) {
-  return apiFetch(`/contas/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export async function apiDeleteConta(id, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/contas/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' })
 }
 
 // ─── User profile ─────────────────────────────────────────────────────────────
@@ -163,16 +165,19 @@ export async function apiUpdateProfile(data) {
 }
 
 // ─── Pagamentos ───────────────────────────────────────────────────────────────
-export async function apiCreatePagamento(pagamento) {
-  return apiFetch('/pagamentos', { method: 'POST', body: JSON.stringify(pagamento) })
+export async function apiCreatePagamento(pagamento, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/pagamentos${qs}`, { method: 'POST', body: JSON.stringify(pagamento) })
 }
 
-export async function apiUpdatePagamento(id, pagamento) {
-  return apiFetch(`/pagamentos/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(pagamento) })
+export async function apiUpdatePagamento(id, pagamento, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/pagamentos/${encodeURIComponent(id)}${qs}`, { method: 'PUT', body: JSON.stringify(pagamento) })
 }
 
-export async function apiDeletePagamento(id) {
-  return apiFetch(`/pagamentos/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export async function apiDeletePagamento(id, isPartner = false) {
+  const qs = isPartner ? '?profile=partner' : ''
+  return apiFetch(`/pagamentos/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' })
 }
 
 // ─── Gemini ───────────────────────────────────────────────────────────────────
